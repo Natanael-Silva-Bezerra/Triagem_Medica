@@ -1,0 +1,1674 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="Jogo educativo de triagem de pronto-socorro baseado no Protocolo de Manchester.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 90C14 62 6 40 6 28 6 14 17 6 29 6c9 0 16 5 21 13C55 11 62 6 71 6c12 0 23 8 23 22 0 12-8 34-44 62z' fill='%232f86e6'/%3E%3Cpath d='M42 26h16v40H42zM30 38h40v16H30z' fill='%23dbe9fb'/%3E%3C/svg%3E">
+<style>html{color-scheme:dark}body{margin:0}</style>
+</head>
+<body>
+<title>Simulação de Triagem Médica</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* Layout: uma tela por vez, coluna central de até 1100px. Jogo = HUD, paciente + monitor, cinco botões Manchester. Visual único: azul hospitalar escuro, monitor verde, cores Manchester como único acento. */
+:root{
+  --bg:#07162d; --bg2:#0d2a55; --panel:rgba(10,30,62,.78); --panel-solid:#0c2246;
+  --line:rgba(150,195,255,.2); --fg:#eaf3ff; --muted:#9fb7d6; --accent:#4aa3ff; --accent-ink:#04152e;
+  --ok:#35d07f; --bad:#ff5a64; --warn:#ffb020; --ecg:#5dffa6;
+  --c0:#e5242b; --c1:#f57c1f; --c2:#f2c400; --c3:#1fa34a; --c4:#2f73e6;
+  --f-display:'Barlow Condensed','Arial Narrow',Arial,sans-serif;
+  --f-body:'Barlow',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --f-mono:'Share Tech Mono',ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--f-body); font-size:1rem; line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0; overflow-x:hidden;
+}
+#bg{position:fixed; inset:0; z-index:0; pointer-events:none;
+  background:
+    radial-gradient(900px 500px at 15% 10%, rgba(74,163,255,.28), transparent 60%),
+    radial-gradient(700px 500px at 90% 80%, rgba(47,115,230,.22), transparent 60%),
+    linear-gradient(180deg,#0a1f40 0%, var(--bg) 70%);}
+#bg svg{position:absolute; right:-40px; top:8%; width:min(520px,60vw); opacity:.16}
+#bg .lights{position:absolute; left:0; right:0; top:0; height:90px;
+  background:repeating-linear-gradient(90deg, transparent 0 140px, rgba(200,225,255,.07) 140px 250px); filter:blur(6px)}
+.screen{position:relative; z-index:1; max-width:1100px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; padding-block:14px}
+.screen.center{justify-content:center; align-items:center}
+button{font:inherit; color:inherit; cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid #fff; outline-offset:2px}
+h1,h2,h3{font-family:var(--f-display); margin:0; letter-spacing:.02em; text-wrap:balance}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- botões genéricos ---------- */
+.btn{
+  background:linear-gradient(180deg,#f4f8ff,#cfdcf2); color:#1b2f6b; border:0; border-radius:999px;
+  padding:12px 28px; font-family:var(--f-display); font-weight:700; font-size:1.25rem; letter-spacing:.08em; text-transform:uppercase;
+  box-shadow:0 4px 0 #8da4cf, 0 10px 20px rgba(0,0,0,.35); transition:transform .08s, box-shadow .08s, filter .15s;
+}
+.btn:hover{filter:brightness(1.05); transform:translateY(-1px)}
+.btn:active{transform:translateY(3px); box-shadow:0 1px 0 #8da4cf, 0 4px 10px rgba(0,0,0,.35)}
+.btn.primary{background:linear-gradient(180deg,#6cb8ff,#2f86e6); color:#fff; box-shadow:0 4px 0 #1b5fb0, 0 10px 22px rgba(20,90,200,.45)}
+.btn.small{font-size:1rem; padding:8px 18px}
+.btn.ghost{background:transparent; color:var(--fg); border:1px solid var(--line); box-shadow:none}
+.btn.ghost:hover{background:rgba(255,255,255,.07)}
+.icon-btn{width:42px; height:42px; border-radius:50%; border:1px solid var(--line); background:rgba(10,30,62,.7); display:grid; place-items:center; color:var(--fg)}
+.icon-btn:hover{background:rgba(74,163,255,.2)}
+.icon-btn svg{width:20px; height:20px}
+#snd{position:fixed; z-index:30; top:max(12px,env(safe-area-inset-top,0px)); right:max(12px,env(safe-area-inset-right,0px))}
+
+/* ---------- menu ---------- */
+.menu-card{text-align:center; width:min(520px,100%); display:flex; flex-direction:column; align-items:center; gap:6px; padding:24px 0}
+.logo{width:92px; height:92px; filter:drop-shadow(0 8px 18px rgba(30,120,230,.5)); margin-bottom:6px}
+.eyebrow{margin:0; font-family:var(--f-display); font-weight:600; letter-spacing:.32em; text-transform:uppercase; color:#cfe0f7; font-size:1.2rem}
+.menu-card h1{font-size:clamp(2.8rem,9vw,4.6rem); font-weight:800; text-transform:uppercase; line-height:.95; text-shadow:0 4px 18px rgba(0,0,0,.45)}
+.menu-card .sub{margin:2px 0 0; font-family:var(--f-display); font-weight:800; letter-spacing:.14em; text-transform:uppercase; font-size:clamp(1.6rem,5vw,2.3rem); color:#ff4a56; text-shadow:0 2px 12px rgba(0,0,0,.5)}
+.ecg-deco{width:min(440px,100%); height:50px; margin:6px 0 10px}
+.ecg-deco path{fill:none; stroke:var(--ecg); stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:640; stroke-dashoffset:640; animation:trace 3.2s linear infinite; filter:drop-shadow(0 0 4px var(--ecg))}
+@keyframes trace{0%{stroke-dashoffset:640}70%,100%{stroke-dashoffset:0}}
+.menu-btns{display:grid; grid-template-columns:1fr 1fr; gap:12px; width:min(440px,100%)}
+.menu-btns .btn{padding:12px 10px; font-size:1.1rem}
+.menu-btns .primary{grid-column:1/-1; font-size:1.4rem}
+@media (max-width:360px){.menu-btns{grid-template-columns:1fr}}
+.menu-note{margin:14px 0 0; color:var(--muted); font-size:.95rem; min-height:1.4em; line-height:1.7}
+.share{font-family:var(--f-mono); font-size:1.15rem; background:#0a1c3a; border:1px solid var(--line); border-radius:12px; padding:12px 14px; margin:0 0 10px; white-space:pre-wrap; overflow-wrap:anywhere; user-select:all}
+
+/* ---------- páginas de texto (instruções / ranking) ---------- */
+.page{width:100%; max-width:860px; margin:0 auto; display:flex; flex-direction:column; gap:18px; padding-top:40px; padding-bottom:30px}
+.page h2{font-size:clamp(2rem,6vw,2.8rem); text-transform:uppercase; font-weight:800}
+.page h3{font-size:1.35rem; text-transform:uppercase; color:#cfe0f7; margin-bottom:6px}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px 20px; backdrop-filter:blur(6px)}
+.grid2{display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px}
+.card p{margin:0 0 8px; color:#d6e4f8}
+.card ul{margin:0; padding-left:20px; color:#d6e4f8}
+.card li{margin-bottom:4px}
+kbd{font-family:var(--f-mono); background:rgba(255,255,255,.12); border:1px solid var(--line); border-bottom-width:2px; border-radius:6px; padding:0 7px; font-size:.9em}
+.manchester{display:grid; gap:8px}
+.mrow{display:grid; grid-template-columns:auto 1fr; gap:4px 14px; align-items:center; padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.05); border-left:8px solid var(--lc)}
+.mrow b{font-family:var(--f-display); font-size:1.25rem; text-transform:uppercase; letter-spacing:.04em; color:var(--lc-text,var(--lc))}
+.mrow .mt{font-family:var(--f-mono); text-align:right; color:#fff}
+.mrow .ex{grid-column:1/-1; color:var(--muted); font-size:.92rem}
+.disclaimer{color:var(--muted); font-size:.9rem}
+.rank-list{list-style:none; margin:0; padding:0; display:grid; gap:8px}
+.rank-list li{display:grid; grid-template-columns:36px 1fr auto; gap:12px; align-items:center; padding:12px 14px; background:rgba(255,255,255,.06); border-radius:12px}
+.rank-list .pos{font-family:var(--f-display); font-size:1.6rem; font-weight:800; color:var(--accent)}
+.rank-list .nm{min-width:0; overflow-wrap:anywhere}
+.rank-list .nm small{display:block; color:var(--muted)}
+.rank-list .pt{font-family:var(--f-mono); font-size:1.4rem}
+.empty{color:var(--muted); text-align:center; padding:24px}
+
+/* ---------- jogo ---------- */
+#screen-game{gap:12px}
+.hud{display:grid; grid-template-columns:auto 1fr auto auto; gap:14px; align-items:center; padding:8px 14px; background:var(--panel); border:1px solid var(--line); border-radius:14px; margin-top:42px}
+.hud:has(#lives[hidden]){grid-template-columns:1fr auto auto}
+.lives{display:flex; gap:4px}
+.lives svg{width:26px; height:26px; transition:transform .2s}
+.lives svg.full{fill:#ff3d57; filter:drop-shadow(0 0 5px rgba(255,61,87,.6))}
+.lives svg.empty{fill:none; stroke:#5a7099; stroke-width:2}
+.lives svg.lost{animation:lostlife .5s}
+@keyframes lostlife{0%{transform:scale(1.5)}100%{transform:scale(1)}}
+.timebox{min-width:0}
+.timetxt{font-family:var(--f-display); font-size:1.3rem; font-weight:600; letter-spacing:.04em}
+.timebar{height:8px; border-radius:99px; background:rgba(255,255,255,.12); overflow:hidden; margin-top:2px}
+.timebar i{display:block; height:100%; width:100%; background:linear-gradient(90deg,#3bc8ff,#35d07f); border-radius:inherit; transition:background .3s}
+.timebox.mid .timebar i{background:linear-gradient(90deg,#ffb020,#f57c1f)}
+.timebox.low .timebar i{background:#ff3d57}
+.timebox.low .timetxt{color:#ff6b78; animation:blink .5s steps(2) infinite}
+@keyframes blink{50%{opacity:.45}}
+.scorebox{text-align:right; position:relative}
+.scorebox .lbl{font-family:var(--f-display); letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-size:.85rem; display:block; line-height:1}
+.scorebox b{font-family:var(--f-mono); font-size:1.8rem; font-weight:400; line-height:1.1}
+.combo{display:inline-block; margin-left:8px; font-family:var(--f-display); font-weight:700; font-size:1.05rem; padding:0 8px; border-radius:99px; background:rgba(255,255,255,.12); color:#cfe0f7}
+.combo.hot{background:#f57c1f; color:#1a0b00}
+.pop{position:absolute; right:0; top:-4px; font-family:var(--f-mono); font-size:1.5rem; color:#6dffb0; pointer-events:none; animation:pop 1.1s ease-out forwards; text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.pop.bad{color:#ff7a85}
+@keyframes pop{0%{opacity:0; transform:translateY(8px)}15%{opacity:1}100%{opacity:0; transform:translateY(-34px)}}
+.hud-actions{display:flex; gap:8px}
+
+.stage{display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,1fr); gap:14px; align-items:start}
+#screen-game{justify-content:center}
+.patient{display:flex; gap:20px; align-items:flex-start; position:relative; padding:22px}
+.patient.enter{animation:slidein .35s ease-out}
+@keyframes slidein{from{opacity:0; transform:translateX(-24px)}to{opacity:1; transform:none}}
+.avatar{flex:0 0 auto; width:168px; height:168px; border-radius:18px; background:linear-gradient(160deg,#17407c,#0c2549); border:1px solid var(--line); overflow:hidden}
+.avatar svg{width:100%; height:100%; display:block}
+.pinfo{min-width:0; flex:1}
+.ticket{font-family:var(--f-mono); color:var(--muted); font-size:.9rem; letter-spacing:.08em}
+.pname{font-family:var(--f-display); font-size:2.5rem; font-weight:700; line-height:1.05; margin:2px 0 2px}
+.pmeta{color:#b9cde8; margin-bottom:8px}
+.complaint{margin:0; font-size:1.3rem; line-height:1.4}
+.complaint b{font-family:var(--f-display); letter-spacing:.06em; text-transform:uppercase; font-size:.95rem; color:var(--accent); display:block}
+
+.monitor{display:flex; flex-direction:column; gap:10px; background:#04100f; border:1px solid #1c4d3f; border-radius:16px; padding:12px; box-shadow:inset 0 0 40px rgba(60,255,160,.06)}
+.monitor canvas{width:100%; height:92px; display:block; border-radius:8px; background:#020a09}
+.vitals{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.vit{background:rgba(255,255,255,.04); border:1px solid rgba(93,255,166,.18); border-radius:10px; padding:6px 10px}
+.vit span{font-family:var(--f-display); letter-spacing:.12em; font-size:.85rem; color:#7fd9ae; text-transform:uppercase; display:block}
+.vit b{font-family:var(--f-mono); font-weight:400; font-size:1.7rem; color:var(--ecg); line-height:1.1}
+.vit small{font-family:var(--f-mono); color:#7fd9ae; font-size:.85rem; margin-left:4px}
+.vit.warn{border-color:var(--warn)} .vit.warn b{color:var(--warn)}
+.vit.crit{border-color:var(--bad); animation:critpulse 1s infinite} .vit.crit b{color:#ff7a85}
+@keyframes critpulse{50%{background:rgba(255,90,100,.16)}}
+.hl-note{font-size:.8rem; color:#7fd9ae; margin:0}
+
+.choices{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px}
+.choice{
+  position:relative; border:0; border-radius:14px; padding:14px 8px 10px; min-height:84px; background:var(--lc); color:var(--li);
+  font-family:var(--f-display); font-weight:700; font-size:1.3rem; line-height:1.05; text-transform:uppercase; letter-spacing:.03em;
+  box-shadow:0 5px 0 rgba(0,0,0,.35), 0 10px 20px rgba(0,0,0,.3); transition:transform .08s, filter .2s, opacity .2s;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+}
+.choice small{font-family:var(--f-body); font-weight:500; text-transform:none; letter-spacing:0; font-size:.78rem; opacity:.85}
+.choice .k{position:absolute; top:6px; left:8px; font-family:var(--f-mono); font-weight:400; font-size:.8rem; opacity:.75; border:1px solid currentColor; border-radius:5px; padding:0 5px; line-height:1.3}
+.choice:hover:not(:disabled){transform:translateY(-3px); filter:brightness(1.1)}
+.choice:active:not(:disabled){transform:translateY(3px); box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.choice.elim{opacity:.18; filter:grayscale(1); pointer-events:none}
+.choice:disabled{cursor:default}
+.tools{display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:space-between; padding-bottom:6px}
+.tools .left{color:var(--muted); font-size:.95rem}
+.tools .right{display:flex; gap:8px; flex-wrap:wrap}
+.tool{display:inline-flex; gap:8px; align-items:center; border:1px solid var(--line); background:var(--panel); border-radius:999px; padding:8px 16px; font-weight:600}
+.tool:hover:not(:disabled){background:rgba(74,163,255,.22)}
+.tool:disabled{opacity:.4; cursor:default}
+.tool b{font-family:var(--f-mono); font-weight:400; background:rgba(255,255,255,.15); border-radius:99px; padding:0 8px}
+
+.qlabel{margin:0 0 6px; color:var(--muted); font-size:.92rem}
+.queue{display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px}
+.qcard,.qslot{border-radius:12px; min-height:84px}
+.qcard{position:relative; display:grid; grid-template-columns:44px minmax(0,1fr); grid-template-areas:"av n" "av a" "av t"; gap:0 8px; align-content:center; text-align:left; padding:8px; background:var(--panel); border:1px solid var(--line); overflow:hidden; color:var(--fg)}
+.qcard:hover{background:rgba(74,163,255,.16)}
+.qav{grid-area:av; align-self:center; width:44px; height:44px; border-radius:10px; overflow:hidden; background:#143a72}
+.qav svg{width:100%; height:100%; display:block}
+.qn{grid-area:n; font-family:var(--f-display); font-weight:700; font-size:1.05rem; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.qa{grid-area:a; color:var(--muted); font-size:.8rem; line-height:1.2}
+.qt{grid-area:t; font-family:var(--f-mono); font-size:.95rem; line-height:1.2}
+.qb{position:absolute; left:0; right:0; bottom:0; height:4px; background:rgba(255,255,255,.1); display:none}
+.qb b{display:block; height:100%; background:var(--warn)}
+.qcard.warn .qb{display:block} .qcard.warn{border-color:var(--warn)} .qcard.warn .qt{color:var(--warn)}
+.qcard.crit{border-color:var(--bad); animation:critpulse 1s infinite} .qcard.crit .qb b{background:var(--bad)} .qcard.crit .qt{color:#ff7a85}
+.qcard.sel{outline:3px solid var(--accent); outline-offset:1px; background:rgba(74,163,255,.2)}
+.qslot{display:grid; place-items:center; border:1px dashed var(--line); color:#5d779e; font-size:.85rem}
+@media (max-width:860px){.queue{grid-template-columns:repeat(3,minmax(0,1fr))}}
+#gear{position:fixed; z-index:30; top:max(12px,env(safe-area-inset-top,0px)); right:calc(max(12px,env(safe-area-inset-right,0px)) + 50px)}
+#acct{position:fixed; z-index:30; top:max(12px,env(safe-area-inset-top,0px)); left:max(12px,env(safe-area-inset-left,0px)); display:flex; align-items:center; gap:8px; height:42px; padding:0 16px 0 6px; border-radius:99px; border:1px solid var(--line); background:rgba(10,30,62,.7); font-weight:600; max-width:min(60vw,260px)}
+#acct img{width:30px; height:30px; border-radius:50%; object-fit:cover; flex:0 0 auto}
+#acct span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+#acct:hover{background:rgba(74,163,255,.2)}
+#acct[data-off] {padding-left:16px}
+.srow{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px 16px; padding:10px 0; border-bottom:1px solid var(--line)}
+.srow:last-child{border-bottom:0}
+.srow>span{display:grid; gap:2px; flex:1 1 200px; min-width:0}
+.srow small{color:var(--muted); font-size:.85rem; font-weight:400}
+.srow b{font-family:var(--f-mono); font-weight:400; color:var(--accent); margin-left:6px}
+.srow input[type=range]{flex:1 1 150px; min-width:0; accent-color:var(--accent); height:28px}
+.srow input[type=checkbox]{appearance:none; -webkit-appearance:none; flex:0 0 auto; width:48px; height:28px; border-radius:99px; background:#34507f; position:relative; cursor:pointer; transition:background .15s; margin:0}
+.srow input[type=checkbox]::after{content:""; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:left .15s}
+.srow input[type=checkbox]:checked{background:var(--ok)}
+.srow input[type=checkbox]:checked::after{left:23px}
+.tabs,.seg{display:flex; gap:8px; flex-wrap:wrap}
+.tabs button,.seg button{border:1px solid var(--line); background:transparent; color:var(--fg); padding:7px 16px; font-family:var(--f-display); font-weight:700; letter-spacing:.06em; text-transform:uppercase; border-radius:99px}
+.tabs button[aria-pressed=true],.seg button[aria-pressed=true]{background:var(--accent); color:var(--accent-ink); border-color:transparent}
+#rank-mode{background:#0a1c3a; color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:8px 12px; font:inherit}
+.rank-list li.global .nm{display:grid; grid-template-columns:36px 1fr; column-gap:10px; align-items:center}
+.rank-list li.global .nm img{grid-row:1/3; width:36px; height:36px; border-radius:50%}
+.rank-list li.me{outline:2px solid var(--accent)}
+.acct-head{display:flex; gap:16px; align-items:center}
+.acct-head img{width:64px; height:64px; border-radius:50%; flex:0 0 auto}
+.acct-head h3{margin:0}
+.queue.frozen .qcard{border-color:#7fd0ff; box-shadow:inset 0 0 0 1px #7fd0ff}
+.queue.frozen .qb{display:block} .queue.frozen .qb b{background:#7fd0ff}
+.queue.frozen .qcard{animation:none}
+.authform{display:grid; gap:12px; max-width:420px; margin-top:14px}
+.authform label{display:grid; gap:4px; font-weight:600}
+.authform input{background:#0a1c3a; color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font:inherit; min-width:0}
+#settings{z-index:25}
+.authform{display:grid; gap:12px; max-width:420px}
+.authform label{display:grid; gap:4px; color:var(--muted)}
+.authform input{background:#0a1c3a; color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font:inherit}
+.authform .row-btns{justify-content:flex-start}
+.linkbtn{background:none; border:0; color:var(--accent); text-decoration:underline; justify-self:start; padding:0}
+#au-msg{margin:0; min-height:1.3em}
+.overlay>.sheet{margin:auto}
+html.no-motion *,html.no-motion *::before,html.no-motion *::after{animation:none!important; transition:none!important}
+html.no-motion .ecg-deco path{stroke-dashoffset:0}
+.overlay{position:fixed; inset:0; z-index:20; display:grid; place-items:start center; background:rgba(3,10,24,.78); backdrop-filter:blur(5px);
+  padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px)); overflow-y:auto}
+.sheet{width:min(640px,100%); background:var(--panel-solid); border:1px solid var(--line); border-radius:20px; overflow:hidden; box-shadow:0 30px 60px rgba(0,0,0,.5); animation:rise .25s ease-out}
+@keyframes rise{from{opacity:0; transform:translateY(20px) scale(.97)}to{opacity:1; transform:none}}
+.sheet header{padding:14px 20px; font-family:var(--f-display); font-weight:800; text-transform:uppercase; font-size:1.7rem; letter-spacing:.05em; display:flex; justify-content:space-between; align-items:center; gap:10px}
+.sheet.ok header{background:#157f4a} .sheet.near header{background:#b97410} .sheet.bad header{background:#b3263a} .sheet.time header{background:#7a2b8c}
+.sheet .body{padding:16px 20px 20px; display:grid; gap:14px}
+.sheet .pts{font-family:var(--f-mono); font-size:1.3rem}
+.cmp{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+.cmp div{padding:10px 12px; border-radius:12px; background:rgba(255,255,255,.06)}
+.cmp small{display:block; color:var(--muted); font-family:var(--f-display); letter-spacing:.12em; text-transform:uppercase}
+.chip{display:inline-block; margin-top:4px; padding:3px 12px; border-radius:99px; font-family:var(--f-display); font-weight:700; font-size:1.15rem; text-transform:uppercase; background:var(--lc); color:var(--li)}
+.chip.none{background:#3a4a66; color:#dbe7fa}
+.cmp .tm{display:block; font-size:.85rem; color:var(--muted); margin-top:4px}
+.explain{margin:0; font-size:1.08rem; line-height:1.5}
+.explain.warnline{color:#ffd48a; font-size:.98rem}
+.calc{color:var(--muted); font-size:.92rem; font-family:var(--f-mono)}
+.sheet footer{padding:0 20px 20px; display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap}
+.sheet.small{width:min(420px,100%); text-align:center}
+.sheet.small .body{justify-items:center}
+.toast{position:fixed; z-index:40; left:50%; bottom:max(20px,env(safe-area-inset-bottom,0px)); transform:translate(-50%,30px); opacity:0; background:#fff; color:#10244a; border-radius:99px; padding:10px 20px; font-weight:600; transition:all .3s; pointer-events:none; max-width:90vw; text-align:center}
+.toast.show{opacity:1; transform:translate(-50%,0)}
+
+/* ---------- fim de jogo ---------- */
+.over-top{text-align:center; display:grid; gap:4px; justify-items:center}
+.over-top .big{font-family:var(--f-mono); font-size:clamp(3rem,12vw,5rem); line-height:1; color:#fff}
+.over-top .ttl{font-family:var(--f-display); font-size:1.6rem; font-weight:700; text-transform:uppercase; color:var(--accent); letter-spacing:.06em}
+.newrec{background:#f2c400; color:#201800; border-radius:99px; padding:2px 14px; font-weight:700; font-family:var(--f-display); letter-spacing:.08em; text-transform:uppercase}
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px}
+.stat{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:10px 14px}
+.stat small{display:block; color:var(--muted); font-family:var(--f-display); letter-spacing:.1em; text-transform:uppercase}
+.stat b{font-family:var(--f-mono); font-weight:400; font-size:1.7rem}
+.bars{display:grid; gap:8px}
+.bar{display:grid; grid-template-columns:130px 1fr 64px; gap:10px; align-items:center}
+.bar span{font-family:var(--f-display); font-weight:700; text-transform:uppercase; letter-spacing:.04em}
+.bar .track{height:14px; background:rgba(255,255,255,.1); border-radius:99px; overflow:hidden}
+.bar .track i{display:block; height:100%; background:var(--lc); border-radius:inherit}
+.bar em{font-style:normal; font-family:var(--f-mono); text-align:right; color:#d6e4f8}
+.savebox{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+.savebox input{flex:1 1 180px; min-width:0; background:#0a1c3a; color:var(--fg); border:1px solid var(--line); border-radius:10px; padding:10px 14px; font:inherit}
+.miss{display:grid; gap:10px}
+.miss article{padding:12px 14px; background:rgba(255,255,255,.05); border-radius:12px; border-left:6px solid var(--lc)}
+.miss h4{margin:0 0 4px; font-family:var(--f-display); font-size:1.2rem; letter-spacing:.03em}
+.miss p{margin:0 0 6px; color:#d6e4f8; font-size:.98rem}
+.miss .chip{font-size:.9rem; margin-top:0}
+.row-btns{display:flex; flex-wrap:wrap; gap:12px; justify-content:center}
+
+/* ---------- efeitos ---------- */
+#screen-game.flash-ok .stage{animation:fok .5s}
+#screen-game.flash-bad .stage{animation:fbad .5s}
+@keyframes fok{0%{box-shadow:0 0 0 0 rgba(53,208,127,.7)}100%{box-shadow:0 0 0 30px rgba(53,208,127,0)}}
+@keyframes fbad{0%,100%{transform:none}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.vignette{position:fixed; inset:0; z-index:15; pointer-events:none; opacity:0; background:radial-gradient(ellipse at center, transparent 55%, rgba(255,40,60,.5)); transition:opacity .3s}
+.vignette.on{opacity:1}
+
+@media (max-width:860px){
+  .stage{grid-template-columns:1fr}
+  .choices{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .choices .choice:last-child{grid-column:1/-1}
+  .hud{grid-template-columns:1fr auto; grid-template-areas:"lives actions" "time time" "score score"}
+  .hud .lives{grid-area:lives} .hud .hud-actions{grid-area:actions} .hud .timebox{grid-area:time} .hud .scorebox{grid-area:score; text-align:left}
+  .pop{right:auto; left:0}
+}
+@media (max-width:520px){
+  .patient{flex-direction:column}
+  .avatar{width:104px; height:104px}
+  .bar{grid-template-columns:96px 1fr 54px}
+  .cmp{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important; animation-iteration-count:1!important; transition-duration:.001ms!important}
+  .ecg-deco path{stroke-dashoffset:0}
+}
+</style>
+
+<div id="bg" aria-hidden="true">
+  <div class="lights"></div>
+  <svg viewBox="0 0 400 400" fill="none" stroke="#9fd0ff" stroke-width="2">
+    <polygon points="200,20 300,20 350,106 300,192 200,192 150,106"/>
+    <polygon points="300,192 400,192 450,278 400,364 300,364 250,278"/>
+    <polygon points="100,192 200,192 250,278 200,364 100,364 50,278"/>
+    <circle cx="200" cy="20" r="5" fill="#9fd0ff"/><circle cx="350" cy="106" r="5" fill="#9fd0ff"/><circle cx="250" cy="278" r="5" fill="#9fd0ff"/>
+  </svg>
+</div>
+
+<button id="snd" class="icon-btn" aria-label="Ligar ou desligar o som" title="Som (M)"></button>
+<button id="gear" class="icon-btn" aria-label="Configurações" title="Configurações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.4"/><circle cx="8" cy="17" r="2.4"/></svg></button>
+<button id="acct" data-act="acct" hidden><img id="acct-img" alt=""><span id="acct-name"></span></button>
+<div class="vignette" id="vignette"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- ============ CONFIGURAÇÕES ============ -->
+<div class="overlay" id="settings" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="set-title">
+    <header style="background:#1f4f94"><span id="set-title">Configurações</span></header>
+    <div class="body">
+      <label class="srow"><span>Volume geral</span><b id="o-vol">80%</b><input type="range" id="s-vol" min="0" max="100" step="5"></label>
+      <label class="srow"><span>Volume do bip do monitor<small>O bip acompanha a frequência cardíaca do paciente. Em 0% fica mudo.</small></span><b id="o-mon">50%</b><input type="range" id="s-mon" min="0" max="100" step="5"></label>
+      <label class="srow"><span>Som ligado<small>Atalho: tecla M.</small></span><input type="checkbox" id="s-snd"></label>
+      <label class="srow"><span>Destacar sinais vitais alterados<small>Pinta de amarelo ou vermelho o que foge do normal, em qualquer modo. Vale a partir do próximo paciente.</small></span><input type="checkbox" id="s-hl"></label>
+      <label class="srow"><span>Animações<small>Desligue para reduzir movimento e piscadas.</small></span><input type="checkbox" id="s-mot"></label>
+      <div class="srow"><span>Tamanho do texto</span><div class="seg" id="s-size" role="group" aria-label="Tamanho do texto"><button data-v="0">Normal</button><button data-v="1">Grande</button><button data-v="2">Maior</button></div></div>
+      <div class="srow"><span>Dificuldade<small>Difícil: tempos menores, pacientes chegam mais rápido e o erro no Contra o relógio custa 7 s. Vale a partir da próxima partida.</small></span><div class="seg" id="s-diff" role="group" aria-label="Dificuldade"><button data-v="normal">Normal</button><button data-v="hard">Difícil</button></div></div>
+      <div class="srow"><span>Dados deste aparelho<small>Apaga recordes, ranking local e preferências. Não mexe na sua conta.</small></span><button class="btn ghost small" id="s-reset">Apagar dados</button></div>
+    </div>
+    <footer><button class="btn primary small" id="set-ok">Pronto</button></footer>
+  </div>
+</div>
+
+<!-- ============ MENU ============ -->
+<section id="screen-menu" class="screen center">
+  <div class="menu-card">
+    <svg class="logo" viewBox="0 0 100 100" aria-hidden="true">
+      <defs><linearGradient id="hg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fb0ff"/><stop offset="1" stop-color="#1c63c4"/></linearGradient></defs>
+      <path d="M50 90 C14 62 6 40 6 28 C6 14 17 6 29 6 C38 6 45 11 50 19 C55 11 62 6 71 6 C83 6 94 14 94 28 C94 40 86 62 50 90Z" fill="url(#hg)"/>
+      <rect x="42" y="26" width="16" height="40" rx="3" fill="#dbe9fb"/><rect x="30" y="38" width="40" height="16" rx="3" fill="#dbe9fb"/>
+    </svg>
+    <p class="eyebrow">Simulação de</p>
+    <h1>Triagem Médica</h1>
+    <p class="sub">Pronto-Socorro</p>
+    <svg class="ecg-deco" viewBox="0 0 440 50" aria-hidden="true"><path d="M0 28 H70 l8 -5 l8 5 H120 l6 5 l10 -30 l10 40 l7 -15 H200 q14 -14 28 0 H300 l6 5 l10 -30 l10 40 l7 -15 H380 q14 -14 28 0 H440"/></svg>
+    <div class="menu-btns">
+      <button class="btn primary" data-act="play">Jogar</button>
+      <button class="btn" data-act="sprint">Contra o relógio</button>
+      <button class="btn" data-act="daily">Desafio do dia</button>
+      <button class="btn" data-act="waiting">Sala de espera</button>
+      <button class="btn" data-act="train">Modo treino</button>
+      <button class="btn" data-act="help">Instruções</button>
+      <button class="btn" data-act="rank">Ranking</button>
+      <button class="btn" data-act="acct">Minha conta</button>
+      <button class="btn" data-act="settings">Configurações</button>
+    </div>
+    <p class="menu-note" id="menu-best"></p>
+  </div>
+</section>
+
+<!-- ============ INSTRUÇÕES ============ -->
+<section id="screen-help" class="screen" hidden>
+  <div class="page">
+    <h2>Instruções</h2>
+    <div class="card">
+      <h3>Objetivo</h3>
+      <p>Pacientes chegam ao pronto-socorro. Leia a queixa e os sinais vitais e classifique cada um na cor correta do Protocolo de Manchester antes que o tempo acabe. Quanto mais você acerta, mais rápido o plantão fica.</p>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Modo Jogar</h3>
+        <ul>
+          <li>Você começa com <b>3 vidas</b>. Erro ou tempo esgotado custa uma vida.</li>
+          <li>O tempo por paciente começa em 30 s e cai 1 s a cada acerto, até 8 s.</li>
+          <li>Pontos: 100 + bônus de tempo, multiplicados pela <b>sequência</b> de acertos (até ×3).</li>
+          <li>Classificar <b>uma cor acima</b> do correto (sobretriagem leve) vale 50 pontos, não custa vida e zera a sequência.</li>
+          <li>A cada 5 acertos seguidos você ganha <b>+1 vida</b> (máximo 5). A cada 10 acertos, +1 dica e +1 tempo extra.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Modo treino</h3>
+        <ul>
+          <li>Sem relógio e sem vidas, para estudar com calma.</li>
+          <li>Sinais vitais alterados ficam destacados.</li>
+          <li>A tabela de consulta fica disponível durante a partida (tecla <kbd>R</kbd>).</li>
+          <li>Dicas ilimitadas. Encerre quando quiser para ver o relatório.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Contra o relógio</h3>
+        <ul>
+          <li>Você tem <b>90 segundos</b> no total, sem limite por paciente e sem vidas.</li>
+          <li>Cada acerto dá <b>+3 s</b>. Cada erro tira <b>5 s</b> (7 s no Difícil).</li>
+          <li>A sequência continua multiplicando os pontos. Vale a velocidade, mas o erro custa caro.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Desafio do dia</h3>
+        <ul>
+          <li><b>10 pacientes</b>, os mesmos para todo mundo no mesmo dia (2 de cada cor).</li>
+          <li>20 segundos por paciente, sem dicas nem tempo extra.</li>
+          <li>No fim você copia o resultado em quadradinhos para comparar com colegas.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Sala de espera</h3>
+      <ul>
+        <li>Até <b>6 pacientes</b> esperam ao mesmo tempo. Novos chegam cada vez mais rápido.</li>
+        <li>Escolha quem triar clicando no paciente ou com <kbd>←</kbd> <kbd>→</kbd>. Depois classifique com <kbd>1</kbd> a <kbd>5</kbd>.</li>
+        <li>Quem está mais grave <b>piora mais depressa</b>. Quando a barra do paciente aparece, ele está perto de evoluir mal e você perde uma vida.</li>
+        <li>Se a sala lota e chega outro paciente, ele vai embora sem triagem e você perde uma vida.</li>
+        <li>Classificar certo o paciente <b>mais grave da fila</b> dá +50 pontos de ordem certa.</li>
+        <li>O relógio para enquanto você lê o resultado de cada triagem.</li>
+        <li>Use <b>Estabilizar</b> (<kbd>T</kbd>) para congelar a sala por 8 s. Você começa com 2 e ganha mais a cada 10 acertos.</li>
+      </ul>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Poderes</h3>
+        <ul>
+          <li><b>Dica</b> <kbd>H</kbd>: elimina duas cores erradas.</li>
+          <li><b>+10 s</b> <kbd>T</kbd>: soma tempo ao paciente (Jogar) ou ao relógio (Contra o relógio).</li>
+          <li><b>Estabilizar</b> <kbd>T</kbd>: na Sala de espera, para a piora e as chegadas por 8 s.</li>
+          <li>Não existem no Desafio do dia.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Atalhos</h3>
+        <ul>
+          <li><kbd>1</kbd> a <kbd>5</kbd>: escolher a cor</li>
+          <li><kbd>Enter</kbd> ou <kbd>Espaço</kbd>: próximo paciente</li>
+          <li><kbd>P</kbd> ou <kbd>Esc</kbd>: pausar &nbsp; <kbd>M</kbd>: som</li>
+        </ul>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Protocolo de Manchester</h3>
+      <div class="manchester" data-ref></div>
+    </div>
+    <p class="disclaimer">Jogo educativo inspirado no Protocolo de Manchester. Os casos são fictícios e simplificados. Ele não substitui treinamento, protocolo institucional nem julgamento clínico.</p>
+    <div class="row-btns"><button class="btn" data-act="menu">Voltar</button></div>
+  </div>
+</section>
+
+<!-- ============ RANKING ============ -->
+<section id="screen-rank" class="screen" hidden>
+  <div class="page">
+    <h2>Ranking</h2>
+    <div class="tabs" id="rank-tabs" role="group" aria-label="Tipo de ranking">
+      <button data-tab="local" aria-pressed="true">Neste aparelho</button>
+      <button data-tab="global" aria-pressed="false">Global</button>
+    </div>
+    <div id="rank-local-wrap">
+      <p class="disclaimer">Os resultados ficam salvos só neste navegador.</p>
+      <ol class="rank-list" id="rank-list"></ol>
+    </div>
+    <div id="rank-global-wrap" hidden>
+      <p class="disclaimer"><label for="rank-mode">Modo&nbsp;</label><select id="rank-mode"><option value="survival">Jogar</option><option value="sprint">Contra o relógio</option><option value="waiting">Sala de espera</option><option value="daily">Desafio de hoje</option></select></p>
+      <ol class="rank-list" id="rank-global"></ol>
+    </div>
+    <div class="row-btns"><button class="btn" data-act="menu">Voltar</button></div>
+  </div>
+</section>
+
+<!-- ============ CONTA ============ -->
+<section id="screen-acct" class="screen" hidden>
+  <div class="page">
+    <h2>Minha conta</h2>
+    <div id="acct-body"></div>
+    <div class="row-btns"><button class="btn" data-act="menu">Voltar</button><button class="btn ghost" id="btn-acct-toggle" hidden></button></div>
+  </div>
+</section>
+
+<!-- ============ JOGO ============ -->
+<section id="screen-game" class="screen" hidden>
+  <header class="hud">
+    <div class="lives" id="lives" aria-label="Vidas"></div>
+    <div class="timebox" id="timebox">
+      <div class="timetxt num" id="timetxt">Tempo: 30s</div>
+      <div class="timebar"><i id="timefill"></i></div>
+    </div>
+    <div class="scorebox">
+      <span class="lbl" id="scorelbl">Score</span>
+      <b class="num" id="score">0</b><span class="combo" id="combo">×1</span>
+    </div>
+    <div class="hud-actions">
+      <button class="icon-btn" id="btn-pause" aria-label="Pausar" title="Pausar (P)">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
+      <button class="icon-btn" id="btn-quit" aria-label="Encerrar" title="Encerrar partida">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <article class="card patient" id="patient">
+      <div class="avatar" id="avatar"></div>
+      <div class="pinfo">
+        <div class="ticket" id="ticket"></div>
+        <div class="pname" id="pname"></div>
+        <div class="pmeta" id="pmeta"></div>
+        <p class="complaint"><b>Queixa principal</b><span id="pq"></span></p>
+      </div>
+    </article>
+    <aside class="monitor" aria-label="Monitor de sinais vitais">
+      <canvas id="ecg"></canvas>
+      <div class="vitals">
+        <div class="vit" id="v-fc"><span title="Frequência cardíaca">FC</span><b class="num"></b><small>bpm</small></div>
+        <div class="vit" id="v-pa"><span title="Pressão arterial">PA</span><b class="num"></b><small>mmHg</small></div>
+        <div class="vit" id="v-t"><span title="Temperatura">Temp</span><b class="num"></b><small>°C</small></div>
+        <div class="vit" id="v-o"><span title="Saturação de oxigênio">SpO₂</span><b class="num"></b><small>%</small></div>
+      </div>
+      <p class="hl-note" id="hl-note" hidden>Valores em amarelo ou vermelho estão fora do esperado para a idade.</p>
+    </aside>
+  </main>
+
+  <div id="qwrap" hidden>
+    <p class="qlabel">Sala de espera: escolha quem triar (clique ou use ← →). Quem corre mais risco piora mais depressa.</p>
+    <div class="queue" id="queue"></div>
+  </div>
+
+  <div class="choices" id="choices" role="group" aria-label="Classificação de risco"></div>
+
+  <div class="tools">
+    <div class="left num" id="tools-left"></div>
+    <div class="right">
+      <button class="tool" id="btn-ref" hidden>Tabela <kbd>R</kbd></button>
+      <button class="tool" id="btn-hint">Dica <kbd>H</kbd> <b id="n-hint">2</b></button>
+      <button class="tool" id="btn-time"><span id="time-lbl">+10 s</span> <kbd>T</kbd> <b id="n-time">2</b></button>
+    </div>
+  </div>
+
+  <!-- feedback -->
+  <div class="overlay" id="fb" hidden>
+    <div class="sheet" id="fb-sheet" role="dialog" aria-modal="true" aria-labelledby="fb-title">
+      <header><span id="fb-title"></span><span class="pts num" id="fb-pts"></span></header>
+      <div class="body">
+        <div class="cmp">
+          <div><small>Sua escolha</small><span id="fb-you"></span><span class="tm" id="fb-you-t"></span></div>
+          <div><small>Gabarito</small><span id="fb-right"></span><span class="tm" id="fb-right-t"></span></div>
+        </div>
+        <p class="explain" id="fb-text"></p>
+        <p class="explain warnline" id="fb-note" hidden></p>
+        <div class="calc" id="fb-calc"></div>
+      </div>
+      <footer><button class="btn primary" id="btn-next">Próximo paciente</button></footer>
+    </div>
+  </div>
+
+  <!-- pausa -->
+  <div class="overlay" id="pause" hidden>
+    <div class="sheet small">
+      <header style="background:#1f4f94;justify-content:center">Jogo pausado</header>
+      <div class="body">
+        <p class="explain">O relógio está parado e o paciente fica oculto.</p>
+        <button class="btn primary" id="btn-resume">Continuar</button>
+        <button class="btn ghost small" id="btn-pause-set">Configurações</button>
+        <button class="btn ghost small" id="btn-pause-quit">Encerrar partida</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- tabela de consulta (treino) -->
+  <div class="overlay" id="ref" hidden>
+    <div class="sheet">
+      <header style="background:#1f4f94">Protocolo de Manchester</header>
+      <div class="body"><div class="manchester" data-ref></div></div>
+      <footer><button class="btn small" id="btn-ref-close">Fechar</button></footer>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FIM DE JOGO ============ -->
+<section id="screen-over" class="screen" hidden>
+  <div class="page">
+    <div class="over-top">
+      <h2 id="over-h">Fim de jogo</h2>
+      <div class="big num" id="over-score">0</div>
+      <div class="ttl" id="over-title"></div>
+      <div class="newrec" id="over-rec" hidden>Novo recorde</div>
+    </div>
+    <div class="stats" id="over-stats"></div>
+    <p class="disclaimer" id="cloud-note" hidden></p>
+    <div class="card"><h3>Acertos por categoria</h3><div class="bars" id="over-bars"></div></div>
+    <div class="card" id="save-card">
+      <h3>Salvar no ranking</h3>
+      <div class="savebox">
+        <input id="rank-name" type="text" maxlength="18" placeholder="Seu nome" autocomplete="nickname" aria-label="Seu nome">
+        <button class="btn small primary" id="btn-save">Salvar</button>
+      </div>
+    </div>
+    <div class="card" id="share-card" hidden>
+      <h3>Compartilhar resultado</h3>
+      <p class="share" id="share-text"></p>
+      <button class="btn small primary" id="btn-copy">Copiar resultado</button>
+    </div>
+    <div class="card" id="miss-card" hidden><h3>Revise seus erros</h3><div class="miss" id="over-miss"></div></div>
+    <div class="row-btns">
+      <button class="btn primary" id="btn-again">Jogar novamente</button>
+      <button class="btn" data-act="menu">Menu</button>
+    </div>
+  </div>
+</section>
+
+<script>
+(()=>{
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const mem={};
+const store={
+  get(k,d){try{const v=localStorage.getItem(k);if(v!=null)return JSON.parse(v)}catch(e){} return k in mem?mem[k]:d},
+  set(k,v){mem[k]=v;try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+};
+
+/* ============ CONFIGURAÇÕES ============ */
+const S=Object.assign({volume:80,monVol:50,highlight:false,motion:!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches),textSize:0,hard:false},store.get('triagem-config',{}));
+const saveS=()=>store.set('triagem-config',S);
+
+/* ============ DADOS ============ */
+const LEVELS=[
+  {name:'Emergência',     time:'Atendimento imediato', color:'var(--c0)', ink:'#fff',    ex:'Parada cardiorrespiratória, choque, via aérea obstruída, convulsão em curso.'},
+  {name:'Muito Urgente',  time:'até 10 min',           color:'var(--c1)', ink:'#1a0b00', ex:'Dor torácica sugestiva de infarto, AVC agudo, falta de ar grave, trauma de crânio com perda de consciência.'},
+  {name:'Urgente',        time:'até 60 min',           color:'var(--c2)', ink:'#1f1700', ex:'Dor abdominal moderada, fratura com circulação preservada, desidratação moderada, febre sem sinais de alarme.'},
+  {name:'Pouco Urgente',  time:'até 120 min',          color:'var(--c3)', ink:'#fff',    ex:'Entorse leve, dor de garganta, lombalgia sem sinais de alarme, diarreia leve.'},
+  {name:'Não Urgente',    time:'até 240 min',          color:'var(--c4)', ink:'#fff',    ex:'Renovação de receita, resfriado, troca de curativo, atestado.'}
+];
+const CASES=[
+ // 0 — Emergência
+ {n:'Roberto Carlos',a:58,s:'M',q:'Trazido pelo SAMU inconsciente, sem pulso e sem respirar. RCP em andamento.',fc:0,pa:'0/0',t:35,o:0,c:0,
+  f:'Parada cardiorrespiratória não permite espera. É preciso manter compressões de alta qualidade, garantir a via aérea e desfibrilar se houver ritmo chocável.'},
+ {n:'Helena Duarte',a:34,s:'F',q:'Após picada de abelha, lábios inchados, voz rouca e chiado. Mal consegue respirar.',fc:128,pa:'78/40',t:36.4,o:86,c:0,
+  f:'Anafilaxia com edema de via aérea e hipotensão. A adrenalina intramuscular deve ser feita sem demora.'},
+ {n:'Marcos Vinícius',a:27,s:'M',q:'Motociclista após colisão. Sangramento abundante na coxa que não para com compressão. Pálido e confuso.',fc:138,pa:'72/40',t:35.6,o:90,c:0,
+  f:'Hemorragia incontrolável com sinais de choque hipovolêmico. É prioridade máxima: controle do sangramento e reposição volêmica.'},
+ {n:'Lucas Andrade',a:6,s:'M',q:'Chegou convulsionando. Convulsão tônico-clônica há 8 minutos sem parar.',fc:150,pa:'100/60',t:38.2,o:88,c:0,
+  f:'Crise convulsiva prolongada é estado de mal epiléptico. Proteger a via aérea e usar medicação anticonvulsivante imediatamente.'},
+ {n:'Antônia Ferreira',a:72,s:'F',q:'Diabética, encontrada desacordada em casa, não responde a estímulos. Glicemia capilar: 28 mg/dL.',fc:110,pa:'100/60',t:35.8,o:95,c:0,
+  f:'Hipoglicemia grave com rebaixamento da consciência. Exige glicose intravenosa imediata.'},
+ {n:'Sérgio Matos',a:66,s:'M',q:'Engasgou durante o almoço. Não consegue falar nem tossir, leva as mãos ao pescoço, lábios arroxeados.',fc:120,pa:'160/90',t:36.5,o:70,c:0,
+  f:'Obstrução total da via aérea. Manobra de desobstrução já, antes de qualquer outra avaliação.'},
+ {n:'Pedro Henrique',a:4,s:'M',q:'Resgatado de piscina há 3 minutos. Inconsciente, respiração em gasping e pulso fraco.',fc:40,pa:'60/30',t:34.5,o:62,c:0,
+  f:'Afogamento com bradicardia e hipóxia grave. Ventilação e reanimação imediatas, sem espera.'},
+ {n:'Osvaldo Pires',a:81,s:'M',q:'Infecção urinária há 3 dias. Agora confuso, pele fria e manchada, quase sem urinar.',fc:124,pa:'70/40',t:39.4,o:89,c:0,
+  f:'Choque séptico: infecção com hipotensão e má perfusão. É preciso agir de imediato com fluidos, antibióticos e suporte.'},
+ // 1 — Muito urgente
+ {n:'Jorge Amado Filho',a:61,s:'M',q:'Dor forte no peito há 40 minutos, em aperto, irradiando para o braço esquerdo, com suor frio e náusea.',fc:102,pa:'150/95',t:36.6,o:94,c:1,
+  f:'Quadro típico de síndrome coronariana aguda. O ECG deve ser feito em até 10 minutos. Está estável, por isso é Muito Urgente.'},
+ {n:'Teresinha Gomes',a:69,s:'F',q:'Boca torta, fraqueza no braço direito e fala arrastada, começou há 50 minutos.',fc:88,pa:'190/105',t:36.7,o:96,c:1,
+  f:'Suspeita de AVC agudo. O tempo define a chance de tratamento, então ativa o protocolo de AVC com prioridade alta.'},
+ {n:'Camila Ferraz',a:24,s:'F',q:'Crise de asma: fala só palavras soltas, usa o pescoço para respirar e a bombinha não ajudou.',fc:124,pa:'120/75',t:36.8,o:88,c:1,
+  f:'Dispneia intensa com saturação baixa. Ainda fala e mantém a via aérea, mas precisa de atendimento em até 10 minutos.'},
+ {n:'Davi Luiz',a:2,s:'M',q:'Febre alta desde ontem, muito sonolento, com manchas roxas que não somem à pressão e pescoço rígido.',fc:162,pa:'90/55',t:39.8,o:94,c:1,
+  f:'Suspeita de meningite ou meningococcemia. Petéquias com febre e sonolência são sinais de alarme graves.'},
+ {n:'Rafael Teixeira',a:30,s:'M',q:'Caiu de andaime de 3 metros, perdeu a consciência por alguns minutos, vomitou duas vezes e agora está sonolento.',fc:62,pa:'140/85',t:36.5,o:97,c:1,
+  f:'Traumatismo craniano com perda de consciência e queda do nível de alerta. Risco de sangramento intracraniano.'},
+ {n:'Patrícia Nunes',a:28,s:'F',q:'Grávida de 34 semanas com sangramento vaginal vivo e dor abdominal intensa e contínua.',fc:112,pa:'100/60',t:36.7,o:97,c:1,
+  f:'Suspeita de descolamento prematuro de placenta, risco para mãe e bebê. Muito Urgente.'},
+ {n:'Edson Ribeiro',a:52,s:'M',q:'Vomitando sangue vivo há 1 hora. Etilista crônico, com tontura ao levantar.',fc:118,pa:'92/58',t:36.4,o:95,c:1,
+  f:'Hemorragia digestiva alta com sinais de repercussão hemodinâmica. Precisa de acesso venoso e avaliação rápida.'},
+ {n:'Alice Moraes',a:3,s:'F',q:'Engoliu cerca de 10 comprimidos de remédio de pressão da avó há 30 minutos. Está muito sonolenta.',fc:66,pa:'70/40',t:36.2,o:95,c:1,
+  f:'Intoxicação medicamentosa com sonolência e bradicardia numa criança pequena. Risco de piora rápida.'},
+ // 2 — Urgente
+ {n:'Cláudio Barros',a:45,s:'M',q:'Dor abdominal moderada há 6 horas, mais forte do lado direito baixo, com náusea e um vômito.',fc:92,pa:'130/85',t:37.8,o:98,c:2,
+  f:'Suspeita de apendicite. Sem instabilidade e com dor moderada, entra como Urgente, com atendimento em até 60 minutos.'},
+ {n:'Marta Silveira',a:38,s:'F',q:'Cólica na região lombar direita, dor 6/10 irradiando para a virilha, com vômito. Sem febre.',fc:88,pa:'140/90',t:36.8,o:98,c:2,
+  f:'Quadro compatível com cólica renal. Dor moderada e sinais vitais estáveis, então Urgente.'},
+ {n:'Gustavo Lima',a:16,s:'M',q:'Caiu de skate. Dor e deformidade no antebraço, dedos com boa cor, sensibilidade e movimento preservados.',fc:96,pa:'120/75',t:36.6,o:99,c:2,
+  f:'Suspeita de fratura sem comprometimento vascular nem neurológico. Precisa de radiografia e imobilização.'},
+ {n:'Neide Campos',a:77,s:'F',q:'Tosse com catarro amarelado há 4 dias, febre e cansaço ao caminhar. Respira um pouco rápido.',fc:100,pa:'125/70',t:38.4,o:94,c:2,
+  f:'Provável pneumonia sem sinais de gravidade imediata. Saturação aceitável, por isso Urgente. Fique atento: se a SpO₂ cair, sobe de prioridade.'},
+ {n:'Isabela Costa',a:5,s:'F',q:'Febre de 39 °C há 2 dias. Brinca e se alimenta bem, sem outros sinais de alerta.',fc:120,pa:'95/60',t:39,o:98,c:2,
+  f:'Febre alta em criança com bom estado geral e sem sinais de alarme. Precisa de avaliação no prazo de uma hora.'},
+ {n:'Wellington Souza',a:41,s:'M',q:'Dor de cabeça intensa há 2 dias, com náusea e incômodo com a luz. Sem febre e sem déficits neurológicos.',fc:84,pa:'135/85',t:36.7,o:98,c:2,
+  f:'Cefaleia de intensidade moderada a forte, sem sinais de alarme neurológicos. Urgente.'},
+ {n:'Rosângela Pinto',a:55,s:'F',q:'Vômitos e diarreia há 2 dias, boca seca, urina escura e pouca. Anda e conversa normalmente.',fc:104,pa:'105/65',t:37.4,o:97,c:2,
+  f:'Desidratação moderada. Está consciente e estável, mas precisa de hidratação e avaliação no prazo de uma hora.'},
+ {n:'Heitor Ramos',a:33,s:'M',q:'Corte de 8 cm no antebraço. O sangramento volta a sair quando tira a compressão e vai precisar de pontos.',fc:80,pa:'125/80',t:36.5,o:99,c:2,
+  f:'Ferida extensa com hemorragia menor que ainda não cessou. Urgente.'},
+ // 3 — Pouco urgente
+ {n:'Fernanda Alves',a:26,s:'F',q:'Torceu o tornozelo no futebol. Inchaço leve, consegue apoiar o pé e andar com desconforto.',fc:78,pa:'118/74',t:36.5,o:99,c:3,
+  f:'Entorse leve, com apoio preservado e dor controlada. Pode esperar até 2 horas.'},
+ {n:'Tiago Moreira',a:19,s:'M',q:'Dor de garganta e febre baixa há 2 dias. Engole líquidos normalmente e não tem falta de ar.',fc:82,pa:'115/70',t:37.6,o:99,c:3,
+  f:'Quadro compatível com faringite, sem sinais de gravidade. Pouco Urgente.'},
+ {n:'Vera Lúcia',a:63,s:'F',q:'Dor lombar há 3 dias após carregar peso. Sem fraqueza nas pernas e sem perda de controle da urina.',fc:76,pa:'135/85',t:36.6,o:98,c:3,
+  f:'Lombalgia mecânica sem sinais de alarme (fraqueza, perda de esfíncteres). Pouco Urgente.'},
+ {n:'Caio Martins',a:8,s:'M',q:'Diarreia leve desde ontem, 3 evacuações. Brinca normalmente e aceita líquidos.',fc:96,pa:'100/62',t:37.2,o:99,c:3,
+  f:'Diarreia leve sem sinais de desidratação. Orientar hidratação e observar.'},
+ {n:'Sônia Brito',a:47,s:'F',q:'Dor de ouvido há 2 dias, com leve secreção. Sem febre.',fc:74,pa:'122/78',t:36.6,o:99,c:3,
+  f:'Provável otite sem sinais sistêmicos. Pouco Urgente.'},
+ {n:'Anderson Reis',a:35,s:'M',q:'Cortou o dedo com faca de cozinha. O sangramento já parou. Última vacina antitetânica há 12 anos.',fc:72,pa:'118/76',t:36.4,o:99,c:3,
+  f:'Ferida pequena e sem sangramento ativo, mas precisa de limpeza e atualização da vacina. Pouco Urgente.'},
+ // 4 — Não urgente
+ {n:'Osmar Pacheco',a:70,s:'M',q:'Veio pedir renovação da receita do remédio de pressão. Sem queixas e com a medicação em dia.',fc:72,pa:'132/82',t:36.4,o:97,c:4,
+  f:'Demanda administrativa, sem sintoma agudo. Não Urgente, e a atenção básica resolveria.'},
+ {n:'Júlia Andrade',a:29,s:'F',q:'Nariz entupido e espirros há 3 dias. Sem febre e sem falta de ar.',fc:70,pa:'110/70',t:36.5,o:99,c:4,
+  f:'Resfriado comum sem sinais de alerta. Não Urgente.'},
+ {n:'Valdemar Cruz',a:58,s:'M',q:'Quer trocar o curativo de uma cirurgia feita há 10 dias. Ferida limpa, sem dor e sem secreção.',fc:74,pa:'128/80',t:36.3,o:98,c:4,
+  f:'Curativo de rotina com boa evolução. Não Urgente.'},
+ {n:'Larissa Gomes',a:21,s:'F',q:'Precisa de atestado para o trabalho. Teve gripe leve semana passada e já está bem.',fc:68,pa:'108/68',t:36.4,o:99,c:4,
+  f:'Solicitação administrativa sem queixa clínica atual. Não Urgente.'},
+ {n:'Ernesto Vaz',a:49,s:'M',q:'Dor no joelho há meses, sem piora recente e sem trauma. Quer indicação de ortopedista.',fc:76,pa:'130/84',t:36.5,o:98,c:4,
+  f:'Dor crônica estável, sem sinais de agudização. Não Urgente, com encaminhamento ambulatorial.'},
+ {n:'Mônica Freitas',a:31,s:'F',q:'Picada de inseto no braço há 1 dia, com coceira e leve vermelhidão no local. Sem inchaço e sem falta de ar.',fc:74,pa:'112/72',t:36.5,o:99,c:4,
+  f:'Reação local leve, sem sinais de alergia sistêmica. Não Urgente.'},
+ // ---- casos adicionais ----
+ {n:'Tânia Rocha',a:29,s:'F',q:'Grávida de 38 semanas, com dor de cabeça forte desde ontem. Chegou convulsionando.',fc:118,pa:'180/115',t:37,o:90,c:0,
+  f:'Eclâmpsia: convulsão em gestante com hipertensão. É emergência obstétrica, com sulfato de magnésio e controle da pressão imediatos.'},
+ {n:'Wagner Lopes',a:24,s:'M',q:'Ferimento por faca no tórax. Respiração ruidosa, não consegue falar frases completas e as veias do pescoço estão dilatadas.',fc:140,pa:'80/50',t:36,o:82,c:0,
+  f:'Suspeita de pneumotórax hipertensivo ou tamponamento: falência respiratória e circulatória aguda. Exige descompressão imediata.'},
+ {n:'Cleide Santos',a:45,s:'F',q:'Resgatada de incêndio em casa. Fuligem na boca e no nariz, voz rouca e respiração ruidosa.',fc:130,pa:'110/70',t:36.8,o:88,c:0,
+  f:'Sinais de lesão por inalação, com risco de fechamento da via aérea. A via aérea vem antes de tratar as queimaduras.'},
+ {n:'Miguel Torres',a:0,am:'2 meses',s:'M',q:'Bebê flácido, quase sem reação, lábios arroxeados e respiração muito lenta.',fc:60,pa:'50/30',t:35.2,o:70,c:0,
+  f:'Lactente com apneia, cianose e bradicardia: falência respiratória iminente. Ventilação imediata.'},
+ {n:'Aurélio Dias',a:58,s:'M',q:'Dor abdominal fortíssima de início súbito há 2 horas. Abdome duro como tábua e dói até ao respirar.',fc:110,pa:'110/70',t:37.9,o:96,c:1,
+  f:'Abdome em tábua sugere perfuração de víscera oca (peritonite). Dor intensa com sinais de abdome agudo cirúrgico.'},
+ {n:'Renata Pinho',a:36,s:'F',q:'Falta de ar súbita e dor no peito ao respirar depois de uma viagem longa de ônibus. A perna direita está inchada e dolorida.',fc:118,pa:'118/72',t:36.9,o:91,c:1,
+  f:'Suspeita de tromboembolismo pulmonar, com trombose na perna como origem provável. Hipoxemia e risco de piora.'},
+ {n:'Bernardo Lins',a:17,s:'M',q:'Diabético tipo 1, com sede intensa, vômitos, respiração profunda e rápida, hálito de maçã e sonolência.',fc:122,pa:'100/62',t:37.2,o:98,c:1,
+  f:'Cetoacidose diabética. Precisa de hidratação e insulina com monitorização, e pode piorar depressa.'},
+ {n:'Yuri Matos',a:15,s:'M',q:'Dor muito forte no testículo esquerdo, de início súbito há 3 horas, com vômito.',fc:100,pa:'125/75',t:36.8,o:98,c:1,
+  f:'Suspeita de torção testicular. A chance de salvar o testículo cai muito depois de cerca de 6 horas.'},
+ {n:'Joana Prado',a:3,s:'F',q:'Derramou água fervente no tórax e no braço. Bolhas extensas e choro intenso.',fc:150,pa:'90/55',t:36.5,o:98,c:1,
+  f:'Queimadura extensa em criança pequena: dor intensa e risco de perda de líquidos. Precisa de analgesia e hidratação rápidas.'},
+ {n:'Vanessa Lacerda',a:31,s:'F',q:'Grávida de 36 semanas com dor de cabeça forte, visão turva e inchaço no rosto.',fc:96,pa:'170/110',t:36.7,o:98,c:1,
+  f:'Suspeita de pré-eclâmpsia grave, que pode evoluir para eclâmpsia. Prioridade alta.'},
+ {n:'Fábio Neri',a:26,s:'M',q:'Bebeu muito em uma festa e vomitou várias vezes. Agora só abre os olhos com estímulo forte e fala arrastado.',fc:58,pa:'100/60',t:35.4,o:92,c:1,
+  f:'Intoxicação alcoólica com rebaixamento da consciência e risco de aspiração. Precisa de monitorização e proteção da via aérea.'},
+ {n:'Letícia Prado',a:20,s:'F',q:'Asma com chiado, fala frases curtas e melhorou só em parte com a bombinha.',fc:108,pa:'118/72',t:36.7,o:95,c:2,
+  f:'Crise asmática moderada, com fala preservada e saturação aceitável. Urgente, e atenção se a saturação cair.'},
+ {n:'Cátia Mendes',a:33,s:'F',q:'Dor lombar do lado direito, febre e ardência ao urinar há 2 dias. Anda e conversa normalmente.',fc:98,pa:'115/70',t:38.6,o:98,c:2,
+  f:'Suspeita de pielonefrite, sem sinais de choque. Precisa de avaliação e antibiótico em até 60 minutos.'},
+ {n:'Rodrigo Pena',a:25,s:'M',q:'Caiu de bicicleta. Ombro deformado e dor intensa ao mexer. Pulso e sensibilidade do braço normais.',fc:96,pa:'130/80',t:36.6,o:99,c:2,
+  f:'Suspeita de luxação de ombro com circulação e nervos preservados. Precisa de imagem e redução, mas sem risco imediato.'},
+ {n:'Alzira Nobre',a:67,s:'F',q:'Pressão alta medida em casa, dor de cabeça leve e nenhum sintoma neurológico.',fc:82,pa:'172/104',t:36.5,o:97,c:2,
+  f:'Pressão muito elevada com sintoma leve, sem sinais de lesão de órgão-alvo. Urgente, para reavaliar e ajustar o tratamento.'},
+ {n:'Priscila Duarte',a:27,s:'F',q:'Grávida de 10 semanas com vômitos há 3 dias. Não consegue manter nem líquidos.',fc:102,pa:'100/62',t:36.8,o:99,c:2,
+  f:'Vômitos persistentes na gestação, com risco de desidratação. Urgente.'},
+ {n:'Enzo Vieira',a:9,s:'M',q:'Dor abdominal e vômitos há 12 horas, febre baixa. A dor piora quando pula ou anda.',fc:104,pa:'105/65',t:37.9,o:99,c:2,
+  f:'Suspeita de apendicite em criança. Sem instabilidade, entra como Urgente, com reavaliação frequente.'},
+ {n:'Marcelo Tavares',a:52,s:'M',q:'Perna esquerda vermelha, quente, inchada e dolorida, com febre de 38,2 °C há 2 dias.',fc:96,pa:'128/80',t:38.2,o:98,c:2,
+  f:'Provável celulite com febre. Precisa de antibiótico e avaliação para descartar trombose ou abscesso.'},
+ {n:'Paulo Gentil',a:28,s:'M',q:'Dor de dente há 2 dias, sem inchaço no rosto e sem febre.',fc:78,pa:'120/78',t:36.6,o:99,c:3,
+  f:'Dor odontogênica sem sinais de infecção que se espalha. Pouco Urgente, com analgesia e encaminhamento ao dentista.'},
+ {n:'Rita Aguiar',a:34,s:'F',q:'Olho vermelho com secreção e coceira há 2 dias. Sem dor forte e sem perda de visão.',fc:72,pa:'116/72',t:36.6,o:99,c:3,
+  f:'Conjuntivite provável, sem sinais de alarme (dor intensa ou perda de visão). Pouco Urgente.'},
+ {n:'Elaine Costa',a:30,s:'F',q:'Ardência ao urinar há 2 dias, sem febre e sem dor nas costas.',fc:80,pa:'118/74',t:36.7,o:99,c:3,
+  f:'Infecção urinária baixa sem sinais de gravidade. Pouco Urgente.'},
+ {n:'Henrique Lopes',a:23,s:'M',q:'Vomitou uma vez depois de comer algo estragado. Já passou, sem dor e sem febre.',fc:84,pa:'122/76',t:36.8,o:99,c:3,
+  f:'Episódio isolado, sem desidratação nem sinais de alarme. Pouco Urgente.'},
+ {n:'Diego Sá',a:32,s:'M',q:'Dor no ombro direito depois do treino na academia, sem queda. Move o braço com desconforto.',fc:70,pa:'124/80',t:36.5,o:99,c:3,
+  f:'Dor muscular ou tendínea sem trauma importante e com movimento preservado. Pouco Urgente.'},
+ {n:'Nair Campos',a:60,s:'F',q:'Tosse seca há 5 dias, sem febre e sem falta de ar.',fc:78,pa:'130/82',t:36.6,o:97,c:3,
+  f:'Tosse sem sinais de alarme e com saturação normal. Pouco Urgente, com orientação e acompanhamento.'},
+ {n:'Débora Lima',a:25,s:'F',q:'Veio pedir a renovação da receita do anticoncepcional. Sem queixas.',fc:70,pa:'110/70',t:36.5,o:99,c:4,
+  f:'Demanda de rotina, sem sintoma agudo. Não Urgente, e a atenção básica resolve.'},
+ {n:'Gilberto Maia',a:44,s:'M',q:'Quer retirar os pontos de uma cirurgia de 12 dias atrás. Ferida cicatrizada, sem dor.',fc:72,pa:'126/80',t:36.4,o:98,c:4,
+  f:'Retirada de pontos de rotina com boa evolução. Não Urgente.'},
+ {n:'Tatiana Rocha',a:22,s:'F',q:'Verruga no dedo há vários meses, sem dor e sem sangramento.',fc:68,pa:'108/68',t:36.4,o:99,c:4,
+  f:'Lesão benigna crônica, sem urgência. Não Urgente, com encaminhamento ambulatorial.'},
+ {n:'Rubens Alves',a:38,s:'M',q:'Precisa de atestado de saúde para entrar na academia. Sem nenhuma queixa.',fc:66,pa:'118/76',t:36.3,o:99,c:4,
+  f:'Solicitação administrativa sem queixa clínica. Não Urgente.'},
+ {n:'Elza Moura',a:66,s:'F',q:'Veio saber quando pode tomar a vacina da gripe. Está bem, sem febre e sem sintomas.',fc:74,pa:'134/82',t:36.4,o:97,c:4,
+  f:'Orientação de vacinação, sem queixa aguda. Não Urgente, e a unidade básica de saúde atende.'},
+ {n:'Nilton Prates',a:54,s:'M',q:'Mancha escura na pele das costas há anos, sem mudança, sem coceira e sem sangramento.',fc:72,pa:'130/84',t:36.5,o:98,c:4,
+  f:'Lesão antiga e estável. Não Urgente, com encaminhamento ao dermatologista para avaliação de rotina.'}
+];
+
+/* ============ SOM (WebAudio, sem arquivos) ============ */
+const Snd={
+  ctx:null, master:null, on:store.get('triagem-som',true),
+  init(){
+    if(this.ctx){ if(this.ctx.state==='suspended') this.ctx.resume(); return; }
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+      this.ctx=new AC(); this.master=this.ctx.createGain(); this.master.gain.value=S.volume/100*.7; this.master.connect(this.ctx.destination);
+    }catch(e){ this.ctx=null; }
+  },
+  tone(f,d,o={}){
+    if(!this.on||!this.ctx) return;
+    const {type='sine',vol=.2,at=0,slide=0}=o, t=this.ctx.currentTime+at;
+    const osc=this.ctx.createOscillator(), g=this.ctx.createGain();
+    osc.type=type; osc.frequency.setValueAtTime(f,t);
+    if(slide) osc.frequency.exponentialRampToValueAtTime(Math.max(30,f+slide),t+d);
+    g.gain.setValueAtTime(.0001,t); g.gain.exponentialRampToValueAtTime(vol,t+.012); g.gain.exponentialRampToValueAtTime(.0001,t+d);
+    osc.connect(g); g.connect(this.master); osc.start(t); osc.stop(t+d+.03);
+  },
+  click(){ this.tone(640,.06,{type:'triangle',vol:.12}); },
+  next(){ this.tone(880,.35,{vol:.13}); this.tone(660,.5,{vol:.13,at:.18}); },
+  correct(){ [523,659,784,1047].forEach((f,i)=>this.tone(f,.2,{type:'triangle',vol:.16,at:i*.075})); },
+  near(){ this.tone(440,.16,{type:'triangle',vol:.15}); this.tone(554,.28,{type:'triangle',vol:.15,at:.13}); },
+  wrong(){ this.tone(190,.42,{type:'sawtooth',vol:.16,slide:-90}); this.tone(150,.5,{type:'square',vol:.08,at:.08,slide:-70}); },
+  timeout(){ [520,420,330].forEach((f,i)=>this.tone(f,.22,{type:'square',vol:.1,at:i*.2})); },
+  tick(){ this.tone(1100,.05,{type:'square',vol:.06}); },
+  life(){ [660,880,1175].forEach((f,i)=>this.tone(f,.18,{type:'sine',vol:.16,at:i*.08})); },
+  power(){ this.tone(500,.25,{type:'triangle',vol:.14,slide:700}); },
+  pause(){ this.tone(400,.1,{type:'triangle',vol:.1}); },
+  over(){ [494,440,392,294].forEach((f,i)=>this.tone(f,.4,{type:'triangle',vol:.16,at:i*.28})); },
+  fanfare(){ [523,659,784,1047,1319].forEach((f,i)=>this.tone(f,.3,{type:'triangle',vol:.15,at:i*.1})); },
+  beep(spo2){ if(S.monVol<=0) return; const f=Math.max(380,Math.min(780,520+(spo2-90)*14)); this.tone(f,.09,{vol:.09*S.monVol/100}); },
+  flat(){ if(S.monVol<=0) return; this.tone(720,.7,{vol:.05*S.monVol/100}); }
+};
+
+/* ============ AVATAR ============ */
+function rng(seed){
+  let h=1779033703^seed.length;
+  for(let i=0;i<seed.length;i++){h=Math.imul(h^seed.charCodeAt(i),3432918353);h=h<<13|h>>>19}
+  return ()=>{h=Math.imul(h^h>>>16,2246822507);h=Math.imul(h^h>>>13,3266489909);h^=h>>>16;return (h>>>0)/4294967296};
+}
+const sys=p=>parseInt(String(p).split('/')[0],10)||0;
+function avatarSVG(p){
+  const r=rng(p.n+p.a), pick=a=>a[(r()*a.length)|0];
+  const skin=pick(['#f5d0b5','#e8b48c','#d19b72','#a86d47','#7a4a31','#5a3622']);
+  const child=p.a<13, elder=p.a>=65, fem=p.s==='F';
+  let hair=pick(['#1b1b1f','#3b2415','#6b4423','#8a4b2a','#c9a35a']); if(elder) hair='#cfd2d8';
+  const shirt=pick(['#3b82c4','#2f9e8f','#7b6bd6','#d9a441','#c4566b','#4f5d75']);
+  const cx=60, cy=child?68:58, rx=child?22:24, ry=child?24:28, shY=child?102:92;
+  const unc=/inconsciente|desacordad|convuls|sonolent/i.test(p.q), pain=/dor|cólica/i.test(p.q);
+  const dysp=/respirar|falta de ar|chiado|asma|engasgou|gasping|cansaço/i.test(p.q);
+  const pale=p.fc===0||sys(p.pa)<90, cyan=p.o<90, flush=p.t>=38.5;
+  let style; if(fem) style=child?'long':pick(['long','long','bun','curly']); else style=(elder&&r()<.5)?'bald':pick(['short','short','buzz']);
+  const cap=(top)=>`<path d="M${cx-rx-1} ${cy-4} C${cx-rx-3} ${cy-ry-top} ${cx+rx+3} ${cy-ry-top} ${cx+rx+1} ${cy-4} C${cx+rx-3} ${cy-ry+5} ${cx-rx+3} ${cy-ry+5} ${cx-rx-1} ${cy-4}Z" fill="${hair}"/>`;
+  let back='',front='';
+  if(style==='long'){ back=`<path d="M${cx-rx-5} ${shY+4} C${cx-rx-14} ${cy-ry-6} ${cx+rx+14} ${cy-ry-6} ${cx+rx+5} ${shY+4}Z" fill="${hair}"/>`; front=cap(9); }
+  else if(style==='bun'){ front=cap(9)+`<circle cx="${cx}" cy="${cy-ry-10}" r="9" fill="${hair}"/>`; }
+  else if(style==='curly'){ front=cap(8)+[-2,-1,0,1,2].map(k=>`<circle cx="${cx+k*10}" cy="${cy-ry+2+Math.abs(k)*3}" r="9" fill="${hair}"/>`).join(''); }
+  else if(style==='short'){ front=cap(8); }
+  else if(style==='buzz'){ front=cap(4).replace(`fill="${hair}"`,`fill="${hair}" opacity=".8"`); }
+  const eyeY=cy-2;
+  const eyes=unc
+    ? `<path d="M${cx-13} ${eyeY} q4 4 8 0 M${cx+5} ${eyeY} q4 4 8 0" stroke="#2a1a14" stroke-width="2.2" fill="none" stroke-linecap="round"/>`
+    : `<circle cx="${cx-9}" cy="${eyeY}" r="2.7" fill="#2a1a14"/><circle cx="${cx+9}" cy="${eyeY}" r="2.7" fill="#2a1a14"/>`;
+  const brows=`<path d="M${cx-14} ${eyeY-7} q5 ${pain?2:-2} 10 ${pain?-2:0} M${cx+4} ${eyeY-7} q5 ${pain?-2:-2} 10 ${pain?2:0}" stroke="${hair==='#cfd2d8'?'#9aa0aa':hair}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`;
+  const my=cy+ry*.55, lip=cyan?'#5d73a8':'#a8534e';
+  const mouth=(dysp||unc)
+    ? `<ellipse cx="${cx}" cy="${my}" rx="4.5" ry="3.4" fill="#3a1410" stroke="${lip}" stroke-width="1.6"/>`
+    : pain ? `<path d="M${cx-6} ${my+3} Q${cx} ${my-3} ${cx+6} ${my+3}" stroke="${lip}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`
+    : `<path d="M${cx-6} ${my} Q${cx} ${my+3} ${cx+6} ${my}" stroke="${lip}" stroke-width="2.4" fill="none" stroke-linecap="round"/>`;
+  const glasses=(elder&&r()<.6)?`<g stroke="#222" stroke-width="1.6" fill="none"><circle cx="${cx-9}" cy="${eyeY}" r="6.5"/><circle cx="${cx+9}" cy="${eyeY}" r="6.5"/><path d="M${cx-2.5} ${eyeY}h5"/></g>`:'';
+  const tint=(pale?`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff" opacity=".25"/>`:'')+(cyan?`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#4a6fa5" opacity=".3"/>`:'')+(flush?`<ellipse cx="${cx}" cy="${cy+4}" rx="${rx-4}" ry="${ry-6}" fill="#ff5a4a" opacity=".2"/>`:'');
+  return `<svg viewBox="0 0 120 120" role="img" aria-label="Retrato de ${esc(p.n)}">
+    <circle cx="60" cy="60" r="58" fill="rgba(255,255,255,.05)"/>
+    ${back}
+    <rect x="${cx-8}" y="${cy+ry-6}" width="16" height="24" rx="6" fill="${skin}"/><rect x="${cx-8}" y="${cy+ry-6}" width="16" height="24" rx="6" fill="#000" opacity=".12"/>
+    <path d="M${cx-rx-22} 124 C${cx-rx-22} ${shY+8} ${cx-26} ${shY} ${cx} ${shY} C${cx+26} ${shY} ${cx+rx+22} ${shY+8} ${cx+rx+22} 124Z" fill="${shirt}"/>
+    <path d="M${cx-10} ${shY+1} L${cx} ${shY+12} L${cx+10} ${shY+1}Z" fill="#fff" opacity=".85"/>
+    <circle cx="${cx-rx}" cy="${cy+3}" r="4.5" fill="${skin}"/><circle cx="${cx+rx}" cy="${cy+3}" r="4.5" fill="${skin}"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${skin}"/>
+    ${tint}${front}${brows}${eyes}${glasses}
+    <path d="M${cx} ${cy+1} q-2 7 2 8" stroke="#000" stroke-opacity=".25" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+    ${mouth}
+  </svg>`;
+}
+
+/* ============ MONITOR / ECG ============ */
+const ecg={cv:$('#ecg'),W:0,H:0,dpr:1,s:null,head:0,t:0,acc:0,phase:0,hr:0,spo2:98,color:'#5dffa6',speed:150,beat:false};
+const gauss=(x,c,w,a)=>a*Math.exp(-((x-c)**2)/(2*w*w));
+function pqrst(ph){return gauss(ph,.18,.03,.13)-gauss(ph,.295,.008,.14)+gauss(ph,.315,.011,1)-gauss(ph,.34,.01,.26)+gauss(ph,.56,.055,.24)}
+function ecgResize(){
+  const r=ecg.cv.getBoundingClientRect(); if(!r.width) return;
+  ecg.dpr=Math.min(2,window.devicePixelRatio||1);
+  ecg.cv.width=Math.floor(r.width*ecg.dpr); ecg.cv.height=Math.floor(r.height*ecg.dpr);
+  ecg.W=Math.floor(r.width); ecg.H=Math.floor(r.height); ecg.s=new Float32Array(ecg.W); ecg.head=0;
+  ecgPrime();
+}
+function ecgSample(){
+  let v;
+  if(ecg.hr<=0) v=(Math.random()-.5)*.025;
+  else{
+    const prev=ecg.phase; ecg.phase=(ecg.t*ecg.hr/60)%1;
+    if(ecg.phase<prev) ecg.beat=true;
+    v=pqrst(ecg.phase)+(Math.random()-.5)*.012;
+  }
+  ecg.t+=1/ecg.speed; ecg.s[ecg.head]=v; ecg.head=(ecg.head+1)%ecg.W;
+}
+function ecgPrime(){ if(!ecg.s) return; for(let i=0;i<ecg.W;i++) ecgSample(); ecg.beat=false; }
+function ecgDraw(dt,beepOK){
+  if(!ecg.s) return;
+  ecg.acc+=ecg.speed*dt; let n=0;
+  while(ecg.acc>=1&&n<400){ ecgSample(); ecg.acc-=1; n++; }
+  if(ecg.beat){ ecg.beat=false; if(beepOK) Snd.beep(ecg.spo2); }
+  const c=ecg.cv.getContext('2d'); c.setTransform(ecg.dpr,0,0,ecg.dpr,0,0); c.clearRect(0,0,ecg.W,ecg.H);
+  c.strokeStyle='rgba(93,255,166,.07)'; c.lineWidth=1; c.beginPath();
+  for(let x=0;x<ecg.W;x+=20){c.moveTo(x+.5,0);c.lineTo(x+.5,ecg.H)} for(let y=0;y<ecg.H;y+=20){c.moveTo(0,y+.5);c.lineTo(ecg.W,y+.5)} c.stroke();
+  const mid=ecg.H*.68, amp=ecg.H*.55;
+  c.strokeStyle=ecg.color; c.lineWidth=2; c.lineJoin='round'; c.shadowColor=ecg.color; c.shadowBlur=6; c.beginPath();
+  let pen=false;
+  for(let x=0;x<ecg.W;x++){
+    const d=(x-ecg.head+ecg.W)%ecg.W; if(d<16){pen=false;continue;}
+    const y=mid-ecg.s[x]*amp; if(!pen){c.moveTo(x,y);pen=true}else c.lineTo(x,y);
+  }
+  c.stroke(); c.shadowBlur=0;
+}
+let flatTimer=0;
+
+/* ============ ESTADO DO JOGO ============ */
+let screen='menu', G=null, lastFrame=0, lastTickSec=99;
+const shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+
+function show(name){
+  screen=name;
+  ['menu','help','rank','acct','game','over'].forEach(n=>{$('#screen-'+n).hidden=(n!==name)});
+  window.scrollTo(0,0);
+  if(name==='menu') updateMenu();
+  if(name==='rank') renderRankScreen();
+  if(name==='acct') renderAcct();
+  updateAcctChip();
+  if(name==='game') requestAnimationFrame(ecgResize);
+}
+const MODES={survival:{label:'Jogar'},sprint:{label:'Contra o relógio'},daily:{label:'Desafio do dia'},waiting:{label:'Sala de espera'},train:{label:'Treino'}};
+const SPRINT_TIME=90, DAILY_N=10, DAILY_TIME=20, W_CAP=6, WAIT_MAX=[28,45,80,130,200];
+const todayKey=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+function dailyDeck(){
+  const r=rng('triagem-'+todayKey());
+  const sh=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=(r()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+  const pick=[]; for(let l=0;l<5;l++) pick.push(...sh(CASES.filter(c=>c.c===l)).slice(0,2));
+  return sh(pick).reverse();
+}
+function updateMenu(){
+  const b=store.get('triagem-best',0), sp=store.get('triagem-best-sprint',0), wb=store.get('triagem-best-waiting',0), d=store.get('triagem-daily',{});
+  const parts=[];
+  if(b) parts.push(`Jogar: ${b} pts`); if(sp) parts.push(`Contra o relógio: ${sp} pts`); if(wb) parts.push(`Sala de espera: ${wb} pts`);
+  parts.push(d&&d.date===todayKey()?`Desafio de hoje: ${d.score} pts`:'Desafio de hoje ainda não jogado');
+  $('#menu-best').innerHTML=(b||sp||wb?'Recordes · ':'Sem recordes ainda. Boa sorte no plantão!<br>')+parts.join(' · ');
+}
+/* ============ CONTA: conta Claude (dentro do Claude) ou Supabase (hospedagem pública) ============ */
+// Para ativar o login público fora do Claude, preencha as duas linhas abaixo (veja o LEIA-ME). A chave "anon" foi feita para ser pública.
+const CLOUD={url:'https://xdoigbiuaxqivfatrkcw.supabase.co',key:'sb_publishable_oZGIlESnzFHw0e2ROZROng_GEQy3Aoo'};
+const SB_SRCS=['https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3','https://unpkg.com/@supabase/supabase-js@2.39.3/dist/umd/supabase.js'];
+const Acct={kind:'',status:'loading',user:null,db:null,sb:null,id:null,name:'',avatar:'',progress:null,rank:[],canWrite:true,q:Promise.resolve(),warned:false,unsubs:[],recovery:false,authMode:'in',error:''};
+function initialsAvatar(name){
+  const t=((name||'?').trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('')||'?').toUpperCase(); let h=0; for(const c of (name||'')) h=(h*31+c.charCodeAt(0))%360;
+  const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="hsl(${h},55%,42%)"/><text x="32" y="42" font-size="26" font-family="Arial,sans-serif" font-weight="700" fill="#fff" text-anchor="middle">${esc(t)}</text></svg>`;
+  return 'data:image/svg+xml,'+encodeURIComponent(svg);
+}
+function updateAcctChip(){
+  const c=$('#acct'), vis=(screen==='menu')&&['on','off','signedout'].includes(Acct.status);
+  c.hidden=!vis; if(!vis) return;
+  if(Acct.status==='on'){ $('#acct-img').src=Acct.avatar; $('#acct-img').hidden=false; $('#acct-name').textContent=Acct.name||'Minha conta'; c.removeAttribute('data-off'); }
+  else { $('#acct-img').hidden=true; $('#acct-name').textContent='Entrar'; c.setAttribute('data-off',''); }
+}
+function acctErr(e){
+  if(e&&e.code==='invalid_argument'){ Acct.canWrite=false; if(!Acct.warned){ Acct.warned=true; toast('Seu acesso a este jogo é só de leitura. O progresso não foi salvo na conta.'); } }
+}
+async function claudeInit(){
+  const pair=await Promise.race([Promise.all([claude.use('user'),claude.use('db')]),new Promise(r=>setTimeout(()=>r([null,null]),10000))]);
+  const user=pair[0], db=pair[1]; if(!user||!db) return false;
+  const me=await user.me(); if(!me||!me.id) return false;
+  Acct.kind='claude'; Acct.user=user; Acct.db=db; Acct.id=me.id; Acct.name=me.name||''; Acct.avatar=me.avatarUrl||'';
+  try{ Acct.canWrite=(await user.can('data.write'))!==false; }catch(e){}
+  if(store.get('triagem-guest',false)){ Acct.status='off'; } else { Acct.status='on'; acctConnect(); }
+  return true;
+}
+function loadSb(){
+  return new Promise((res,rej)=>{
+    if(window.supabase&&window.supabase.createClient) return res();
+    let i=0;
+    const next=()=>{ if(i>=SB_SRCS.length) return rej(new Error('sb')); const sc=document.createElement('script'); sc.src=SB_SRCS[i++]; sc.onload=()=>(window.supabase&&window.supabase.createClient)?res():next(); sc.onerror=next; document.head.appendChild(sc); };
+    next(); setTimeout(()=>rej(new Error('timeout')),12000);
+  });
+}
+async function sbInit(){
+  await loadSb();
+  Acct.sb=window.supabase.createClient(CLOUD.url,CLOUD.key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+  Acct.kind='supabase';
+  Acct.sb.auth.onAuthStateChange((ev,sess)=>{ setTimeout(()=>{ if(ev==='PASSWORD_RECOVERY'){ Acct.recovery=true; sbApply(sess).then(()=>show('acct')); } else sbApply(sess); },0); });
+  const r=await Acct.sb.auth.getSession(); await sbApply(r&&r.data&&r.data.session);
+}
+async function sbApply(sess){
+  if(sess&&sess.user){
+    const u=sess.user; if(Acct.status==='on'&&Acct.id===u.id) return;
+    Acct.id=u.id; Acct.status='on';
+    const fallback=(u.user_metadata&&u.user_metadata.display_name)||(u.email||'').split('@')[0]||'Jogador';
+    try{ const r=await Acct.sb.from('profiles').select('display_name').eq('id',u.id).maybeSingle(); Acct.name=(r.data&&r.data.display_name)||fallback; }catch(e){ Acct.name=fallback; }
+    Acct.avatar=initialsAvatar(Acct.name);
+    try{ const r=await Acct.sb.from('progress').select('data').eq('user_id',u.id).maybeSingle(); Acct.progress=(r.data&&r.data.data)||null; }catch(e){ Acct.progress=null; }
+  } else { Acct.status='signedout'; Acct.id=null; Acct.name=''; Acct.progress=null; Acct.recovery=false; }
+  updateAcctChip(); if(screen==='acct') renderAcct(); if(screen==='rank') renderRankScreen();
+}
+async function acctInit(){
+  try{
+    let ok=false;
+    if(window.claude&&typeof claude.use==='function'){ try{ ok=await claudeInit(); }catch(e){ ok=false; } }
+    if(!ok&&CLOUD.url&&CLOUD.key){ try{ await sbInit(); ok=true; }catch(e){ Acct.error='Não foi possível conectar ao serviço de contas. Tente recarregar a página.'; } }
+    if(!ok) Acct.status='unavailable';
+  }catch(e){ Acct.status='unavailable'; }
+  updateAcctChip(); if(screen==='acct') renderAcct(); if(screen==='rank') renderRankScreen();
+}
+function acctConnect(){
+  acctDisconnect();
+  try{
+    Acct.unsubs.push(Acct.db.doc('data/users/'+Acct.id+'/progress').onSnapshot(sn=>{ Acct.progress=sn.exists?sn.data():null; if(screen==='acct') renderAcct(); },acctErr));
+    Acct.unsubs.push(Acct.db.collection('ranking').onSnapshot(sn=>{ Acct.rank=sn.docs.map(d=>Object.assign({id:d.id},d.data())); if(screen==='rank'&&rankTab==='global') renderGlobal(); },acctErr));
+  }catch(e){ acctErr(e); }
+}
+function acctDisconnect(){ Acct.unsubs.forEach(u=>{try{u()}catch(e){}}); Acct.unsubs=[]; Acct.progress=null; Acct.rank=[]; }
+async function acctToggle(){
+  if(Acct.kind==='supabase'){ if(Acct.status==='on'){ try{ await Acct.sb.auth.signOut(); }catch(e){} sbApply(null); } return; }
+  if(Acct.status==='on'){ store.set('triagem-guest',true); Acct.status='off'; acctDisconnect(); }
+  else if(Acct.status==='off'){ store.set('triagem-guest',false); Acct.status='on'; acctConnect(); }
+  updateAcctChip(); renderAcct();
+}
+/* ---- formulários de login (Supabase) ---- */
+const AUTH_MSG={'Invalid login credentials':'E-mail ou senha incorretos.','Email not confirmed':'Confirme seu e-mail antes de entrar. Procure a mensagem na caixa de entrada ou no spam.','User already registered':'Este e-mail já tem conta. Use a aba Entrar.'};
+function authMsg(e){
+  const m=(e&&e.message)||'';
+  for(const k in AUTH_MSG) if(m.indexOf(k)>=0) return AUTH_MSG[k];
+  if(/rate limit|too many|security purposes/i.test(m)) return 'Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+  if(/Password should/i.test(m)) return 'A senha precisa ter pelo menos 6 caracteres.';
+  return 'Não foi possível concluir. Verifique os dados e tente de novo.';
+}
+function setAuthMsg(t,bad){ const el=$('#au-msg'); if(el){ el.textContent=t; el.style.color=bad?'#ff9aa2':''; } }
+async function authSubmit(){
+  const email=$('#au-email').value.trim(), pass=$('#au-pass').value, up=Acct.authMode==='up', name=up?$('#au-name').value.trim():'';
+  if(!/^\S+@\S+\.\S+$/.test(email)){ setAuthMsg('Digite um e-mail válido.',true); return; }
+  if(pass.length<6){ setAuthMsg('A senha precisa ter pelo menos 6 caracteres.',true); return; }
+  if(up&&name.length<2){ setAuthMsg('Escolha um nome de jogador com pelo menos 2 letras.',true); return; }
+  const btn=$('#au-go'); btn.disabled=true; setAuthMsg('Aguarde…');
+  try{
+    if(up){
+      const r=await Acct.sb.auth.signUp({email,password:pass,options:{data:{display_name:name},emailRedirectTo:location.origin+location.pathname}});
+      if(r.error) throw r.error;
+      if(r.data&&r.data.session) toast('Conta criada. Bem-vindo!');
+      else setAuthMsg('Enviamos um e-mail de confirmação para '+email+'. Abra o link e volte aqui para entrar.');
+    } else {
+      const r=await Acct.sb.auth.signInWithPassword({email,password:pass}); if(r.error) throw r.error; Snd.life();
+    }
+  }catch(e){ setAuthMsg(authMsg(e),true); }
+  if(btn.isConnected) btn.disabled=false;
+}
+async function authReset(){
+  const email=$('#au-email').value.trim();
+  if(!/^\S+@\S+\.\S+$/.test(email)){ setAuthMsg('Digite seu e-mail acima e toque em "Esqueci a senha" de novo.',true); return; }
+  try{ const r=await Acct.sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname}); if(r.error) throw r.error; setAuthMsg('Se este e-mail tiver conta, enviamos um link para criar uma nova senha.'); }
+  catch(e){ setAuthMsg(authMsg(e),true); }
+}
+async function recovSubmit(){
+  const pw=$('#rc-pass').value, el=$('#rc-msg');
+  if(pw.length<6){ el.textContent='A senha precisa ter pelo menos 6 caracteres.'; return; }
+  try{ const r=await Acct.sb.auth.updateUser({password:pw}); if(r.error) throw r.error; Acct.recovery=false; toast('Senha atualizada'); renderAcct(); }
+  catch(e){ el.textContent=authMsg(e); }
+}
+function renderAuthForm(box){
+  const up=Acct.authMode==='up';
+  box.innerHTML=`<div class="card"><div class="tabs" id="auth-tabs" role="group" aria-label="Entrar ou criar conta"><button data-m="in" aria-pressed="${!up}">Entrar</button><button data-m="up" aria-pressed="${up}">Criar conta</button></div>
+  <form id="auth-form" class="authform" novalidate>
+    ${up?'<label>Nome de jogador<input id="au-name" maxlength="24" autocomplete="nickname"></label>':''}
+    <label>E-mail<input id="au-email" type="email" autocomplete="email"></label>
+    <label>Senha<input id="au-pass" type="password" autocomplete="${up?'new-password':'current-password'}"></label>
+    <p class="disclaimer" id="au-msg" role="status">${up?'Use um e-mail que você consegue abrir: enviaremos um link de confirmação.':'Entre para salvar seu progresso e aparecer no ranking global.'}</p>
+    <div class="row-btns" style="justify-content:flex-start"><button class="btn primary small" id="au-go" type="submit">${up?'Criar conta':'Entrar'}</button>${up?'':'<button class="btn ghost small" id="au-reset" type="button">Esqueci a senha</button>'}</div>
+  </form></div><p class="disclaimer">Você também pode jogar sem conta. Nesse caso o progresso fica só neste navegador.</p>`;
+}
+function renderAcct(){
+  const box=$('#acct-body'), tg=$('#btn-acct-toggle'), st=Acct.status; tg.hidden=!(st==='on'||st==='off');
+  if(st==='on') tg.textContent='Sair da conta'; else if(st==='off') tg.textContent='Entrar';
+  if(st==='loading'){ box.innerHTML='<div class="card"><p>Verificando sua conta…</p></div>'; return; }
+  if(st==='unavailable'){ box.innerHTML='<div class="card"><h3>Jogando como convidado</h3><p>'+esc(Acct.error||'O login não está ativo nesta hospedagem. Você joga normalmente e seus resultados ficam salvos só neste navegador.')+'</p></div>'; return; }
+  if(st==='signedout'){ renderAuthForm(box); return; }
+  if(st==='on'&&Acct.recovery){ box.innerHTML='<div class="card"><h3>Nova senha</h3><form id="recov-form" class="authform" novalidate><label>Nova senha<input id="rc-pass" type="password" autocomplete="new-password"></label><p class="disclaimer" id="rc-msg" role="status"></p><div class="row-btns" style="justify-content:flex-start"><button class="btn primary small" type="submit">Salvar senha</button></div></form></div>'; return; }
+  if(st==='off'){ box.innerHTML='<div class="card"><h3>Modo convidado</h3><p>Seus resultados ficam só neste navegador. Entre para salvar o progresso na conta e aparecer no ranking global.</p></div>'; return; }
+  const pr=Acct.progress;
+  let h=`<div class="card acct-head"><img src="${esc(Acct.avatar)}" alt=""><div><h3>${esc(Acct.name||'Jogador')}</h3><p>Conectado. Seus resultados são salvos na conta e contam no ranking global.</p></div></div>`;
+  if(!pr){ h+='<div class="card"><p>Jogue uma partida para começar seu histórico.</p></div>'; }
+  else{
+    const acc=pr.answered?Math.round(pr.correct/pr.answered*100):0;
+    h+='<div class="stats">'+[['Partidas',pr.games||0],['Casos atendidos',pr.answered||0],['Precisão',acc+'%'],['Maior sequência',pr.bestStreak||0]].map(([k,v])=>`<div class="stat"><small>${k}</small><b class="num">${v}</b></div>`).join('')+'</div>';
+    h+='<div class="card"><h3>Acertos por categoria</h3><div class="bars">'+LEVELS.map((l,i)=>{const x=(pr.stats&&pr.stats[i])||{t:0,c:0}, pc=x.t?Math.round(x.c/x.t*100):0; return `<div class="bar" style="--lc:${l.color}"><span>${l.name}</span><div class="track"><i style="width:${pc}%"></i></div><em class="num">${x.c}/${x.t}</em></div>`}).join('')+'</div></div>';
+    const miss=Object.entries(pr.missed||{}).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,c])=>({c:CASES.find(x=>x.n===n),n:c})).filter(x=>x.c);
+    if(miss.length) h+='<div class="card"><h3>Casos que você mais erra</h3><div class="miss">'+miss.map(m=>{const l=LEVELS[m.c.c]; return `<article style="--lc:${l.color}"><h4>${esc(m.c.n)} · errou ${m.n}×</h4><p>${esc(m.c.q)}</p><p><span class="chip" style="--lc:${l.color};--li:${l.ink}">${l.name}</span></p><p>${esc(m.c.f)}</p></article>`}).join('')+'</div></div>';
+    if(!Acct.canWrite) h+='<p class="disclaimer">Seu acesso é só de leitura, então novos resultados não são gravados.</p>';
+  }
+  box.innerHTML=h;
+}
+/* ---- salvar partida ---- */
+function buildProgress(old,g){
+  const os=old.stats||[], missed=Object.assign({},old.missed||{});
+  const stats=LEVELS.map((_,i)=>({t:((os[i]&&os[i].t)||0)+g.stats[i].t,c:((os[i]&&os[i].c)||0)+g.stats[i].c}));
+  g.misses.forEach(n=>{ missed[n]=(missed[n]||0)+1; });
+  return {games:(old.games||0)+1,answered:(old.answered||0)+g.answered,correct:(old.correct||0)+g.correct,bestStreak:Math.max(old.bestStreak||0,g.best),stats,missed,updated:Date.now()};
+}
+async function claudeSave(prog,g){
+  await Acct.db.doc('data/users/'+Acct.id+'/progress').set(prog);
+  if(g.mode!=='train'&&g.score>0){
+    const rd=Acct.db.doc('ranking/'+Acct.id), sn=await rd.get(), cur=sn.exists?sn.data():{};
+    const upd=Object.assign({},cur,{games:(cur.games||0)+1,updated:Date.now()});
+    if(g.mode==='daily'){ const d=cur.daily; if(!d||d.date!==todayKey()||g.score>d.score) upd.daily={date:todayKey(),score:g.score}; }
+    else upd[g.mode]=Math.max(cur[g.mode]||0,g.score);
+    await rd.set(upd);
+  }
+}
+async function sbSave(prog,g){
+  const now=new Date().toISOString();
+  let r=await Acct.sb.from('progress').upsert({user_id:Acct.id,data:prog,updated_at:now}); if(r.error) throw r.error;
+  if(g.mode!=='train'&&g.score>0){
+    r=await Acct.sb.from('scores').select('survival,sprint,waiting,daily,daily_date,games').eq('user_id',Acct.id).maybeSingle(); if(r.error) throw r.error;
+    const cur=r.data||{}, row={user_id:Acct.id,survival:cur.survival||0,sprint:cur.sprint||0,waiting:cur.waiting||0,daily:cur.daily||0,daily_date:cur.daily_date||null,games:(cur.games||0)+1,updated_at:now};
+    if(g.mode==='daily'){ if(row.daily_date!==todayKey()||g.score>row.daily){ row.daily=g.score; row.daily_date=todayKey(); } }
+    else row[g.mode]=Math.max(row[g.mode],g.score);
+    r=await Acct.sb.from('scores').upsert(row); if(r.error) throw r.error;
+  }
+}
+function cloudSave(){
+  const note=$('#cloud-note'); note.hidden=true;
+  if(!G||G.answered===0) return;
+  if(Acct.status==='signedout'&&G.mode!=='train'&&G.score>0){ note.textContent='Entre na sua conta (menu, Minha conta) para guardar este resultado no ranking global.'; note.hidden=false; return; }
+  if(Acct.status!=='on') return;
+  const g={mode:G.mode,score:G.score,answered:G.answered,correct:G.correct,best:G.best,stats:G.stats.map(x=>({t:x.t,c:x.c})),misses:G.misses.map(m=>m.p.n)};
+  note.textContent='Salvando na sua conta…'; note.hidden=false;
+  Acct.q=Acct.q.then(async()=>{
+    try{
+      const prog=buildProgress(Acct.progress||{},g);
+      if(Acct.kind==='supabase') await sbSave(prog,g); else await claudeSave(prog,g);
+      Acct.progress=prog;
+      note.textContent='Resultado salvo na sua conta.';
+    }catch(e){ acctErr(e); note.textContent='Não foi possível salvar na conta. O resultado continua neste aparelho.'; note.hidden=false; }
+  });
+}
+/* ---- ranking ---- */
+let rankTab='local', globalTok=0;
+function renderRankScreen(){
+  $$('#rank-tabs button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===rankTab)));
+  $('#rank-local-wrap').hidden=rankTab!=='local'; $('#rank-global-wrap').hidden=rankTab!=='global';
+  if(rankTab==='local') renderRank(); else renderGlobal();
+}
+async function sbRank(mode){
+  let q=Acct.sb.from('scores').select('user_id,survival,sprint,waiting,daily,daily_date,profiles(display_name)').gt(mode,0);
+  if(mode==='daily') q=q.eq('daily_date',todayKey());
+  const r=await q.order(mode,{ascending:false}).limit(15); if(r.error) throw r.error;
+  return (r.data||[]).map(x=>{ const nm=(x.profiles&&x.profiles.display_name)||'Jogador'; return {id:x.user_id,score:x[mode],name:nm,avatar:initialsAvatar(nm)}; });
+}
+async function renderGlobal(){
+  const ol=$('#rank-global'), mode=$('#rank-mode').value, tok=++globalTok; let rows;
+  const msg=t=>{ ol.innerHTML='<li class="empty">'+t+'</li>'; };
+  try{
+    if(Acct.kind==='supabase'&&Acct.sb){ msg('Carregando…'); rows=await sbRank(mode); }
+    else if(Acct.kind==='claude'&&Acct.status==='on'){
+      const list=Acct.rank.map(r=>({id:r.id,score:mode==='daily'?((r.daily&&r.daily.date===todayKey())?r.daily.score:0):(r[mode]||0)})).filter(r=>r.score>0).sort((a,b)=>b.score-a.score).slice(0,15);
+      const ps=list.length?await Acct.user.profiles(list.map(r=>r.id)):{};
+      rows=list.map(r=>({id:r.id,score:r.score,name:(ps[r.id]&&ps[r.id].name)||'Jogador',avatar:(ps[r.id]&&ps[r.id].avatarUrl)||''}));
+    } else { msg(Acct.status==='unavailable'?'O ranking global só funciona com login. Ele não está ativo nesta hospedagem.':'Entre na sua conta para ver o ranking global.'); return; }
+  }catch(e){ if(tok===globalTok) msg('Não foi possível carregar o ranking agora.'); return; }
+  if(tok!==globalTok) return;
+  if(!rows.length){ msg('Ninguém pontuou neste modo ainda.'); return; }
+  ol.replaceChildren(...rows.map((r,i)=>{
+    const li=document.createElement('li'); li.className='global'+(r.id===Acct.id?' me':'');
+    const pos=document.createElement('span'); pos.className='pos num'; pos.textContent=i+1;
+    const nm=document.createElement('span'); nm.className='nm';
+    const im=document.createElement('img'); im.alt=''; im.src=r.avatar||'';
+    const t=document.createElement('span'); t.textContent=r.name+(r.id===Acct.id?' (você)':'');
+    const sm=document.createElement('small'); sm.textContent=(MODES[mode]||{label:'Desafio de hoje'}).label;
+    nm.append(im,t,sm);
+    const pt=document.createElement('span'); pt.className='pt num'; pt.textContent=r.score;
+    li.append(pos,nm,pt); return li;
+  }));
+}
+
+/* ---- janela de configurações ---- */
+function applySettings(){
+  const de=document.documentElement;
+  de.classList.toggle('no-motion',!S.motion);
+  de.style.fontSize=[100,115,130][S.textSize]+'%';
+  if(Snd.master) Snd.master.gain.value=S.volume/100*.7;
+}
+function syncSettingsUI(){
+  $('#s-vol').value=S.volume; $('#o-vol').textContent=S.volume+'%';
+  $('#s-mon').value=S.monVol; $('#o-mon').textContent=S.monVol+'%';
+  $('#s-snd').checked=Snd.on; $('#s-hl').checked=S.highlight; $('#s-mot').checked=S.motion;
+  $$('#s-size button').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.v===S.textSize)));
+  $$('#s-diff button').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.v==='hard')===S.hard)));
+}
+function openSettings(){
+  if(screen==='game'&&G&&(G.state==='play'||G.state==='feedback')) togglePause();
+  syncSettingsUI(); $('#settings').hidden=false; $('#set-ok').focus();
+}
+function closeSettings(){ $('#settings').hidden=true; }
+
+function renderRefs(){
+  const html=LEVELS.map((l,i)=>`<div class="mrow" style="--lc:${l.color};${i===2?'--lc-text:#ffd84a':''}"><b>${l.name}</b><span class="mt">${l.time}</span><span class="ex">${l.ex}</span></div>`).join('');
+  $$('[data-ref]').forEach(el=>el.innerHTML=html);
+}
+
+function newGame(mode){
+  const daily=mode==='daily';
+  G={mode,lives:3,maxLives:5,score:0,streak:0,best:0,answered:0,correct:0,timePer:daily?DAILY_TIME:(S.hard?24:30),timer:30,clock:SPRINT_TIME,state:'idle',cur:null,
+     deck:daily?dailyDeck():[],log:[],queue:[],uid:0,sel:0,spawnIn:10,freeze:0,init:false,wFirst:true,wWorse:null,elim:new Set(),hints:mode==='train'?99:2,boosts:2,stats:LEVELS.map(()=>({t:0,c:0})),misses:[],rt:0,n:0,pending:null,t0:0};
+  $('#screen-game').dataset.mode=mode;
+  $('#btn-ref').hidden=mode!=='train';
+  $('#btn-time').hidden=mode==='train'||daily;
+  $('#time-lbl').textContent=mode==='waiting'?'Estabilizar 8 s':'+10 s';
+  $('#btn-hint').hidden=daily;
+  $('#hl-note').hidden=!(mode==='train'||S.highlight);
+  $('#lives').hidden=mode!=='survival'&&mode!=='waiting';
+  $('#qwrap').hidden=mode!=='waiting'; $('#queue').dataset.sig='';
+  $('#scorelbl').textContent=mode==='train'?'Pontos de treino':'Score';
+  buildChoices(); show('game'); updateHUD(); loadPatient();
+}
+function buildChoices(){
+  $('#choices').innerHTML=LEVELS.map((l,i)=>`<button class="choice" data-i="${i}" style="--lc:${l.color};--li:${l.ink}"><span class="k">${i+1}</span>${l.name}<small>${l.time}</small></button>`).join('');
+}
+function heartSVG(cls){return `<svg viewBox="0 0 24 24" class="${cls}"><path d="M12 21C4 14.5 2 10.5 2 7.6 2 4.9 4 3 6.5 3 8.7 3 10.8 4.2 12 6.2 13.2 4.2 15.3 3 17.5 3 20 3 22 4.9 22 7.6 22 10.5 20 14.5 12 21Z"/></svg>`}
+function updateHUD(lost){
+  if(G.mode==='survival'||G.mode==='waiting'){
+    let h=''; for(let i=0;i<G.maxLives;i++){ h+=heartSVG(i<G.lives?'full':(lost&&i===G.lives?'empty lost':'empty')); }
+    $('#lives').innerHTML=h; $('#lives').setAttribute('aria-label','Vidas: '+G.lives);
+  }
+  $('#score').textContent=G.score;
+  const m=1+Math.min(G.streak,8)*.25;
+  const cb=$('#combo'); cb.textContent='×'+(m%1?m.toFixed(2).replace(/0$/,''):m).toString().replace('.',','); cb.classList.toggle('hot',G.streak>=2);
+  cb.title='Multiplicador por sequência de acertos';
+  $('#n-hint').textContent=G.mode==='train'?'∞':G.hints; $('#n-time').textContent=G.boosts;
+  let left;
+  if(G.mode==='survival') left=`Paciente nº ${Math.max(1,G.n)} · Sequência ${G.streak}${G.lives<G.maxLives?` · +1 vida em ${5-(G.streak%5)}`:''}`;
+  else if(G.mode==='daily') left=`Paciente ${Math.min(Math.max(1,G.n),DAILY_N)} de ${DAILY_N} · Sequência ${G.streak}`;
+  else if(G.mode==='sprint') left=`Atendidos ${G.answered} · Sequência ${G.streak} · acerto +3 s, erro −${S.hard?7:5} s`;
+  else if(G.mode==='waiting') left=`Triados ${G.answered} · Sequência ${G.streak}${G.lives<G.maxLives?` · +1 vida em ${5-(G.streak%5)}`:''}`;
+  else left=`Paciente nº ${Math.max(1,G.n)} · Acertos ${G.correct}/${G.answered}`;
+  $('#tools-left').textContent=left;
+  if(G.mode==='train'){ $('#timetxt').textContent='Sem limite de tempo'; $('#timefill').style.width='100%'; $('#timebox').className='timebox'; }
+  if(G.mode==='sprint') showClock();
+  if(G.mode==='waiting') showRoom();
+  refreshTools();
+}
+function showRoom(){
+  const n=G.queue.length;
+  $('#timetxt').textContent=`Sala de espera: ${n}/${W_CAP}`;
+  $('#timefill').style.width=(n/W_CAP*100)+'%';
+  const cls=n>=W_CAP?'timebox low':n>=W_CAP-1?'timebox mid':'timebox'; const tb=$('#timebox'); if(tb.className!==cls) tb.className=cls;
+}
+function showClock(){
+  const t=Math.max(0,G.clock), sec=Math.ceil(t);
+  $('#timetxt').textContent='Relógio: '+Math.floor(sec/60)+':'+String(sec%60).padStart(2,'0');
+  $('#timefill').style.width=Math.min(100,t/SPRINT_TIME*100)+'%';
+  const cls=t<=10?'timebox low':t<=30?'timebox mid':'timebox'; const tb=$('#timebox'); if(tb.className!==cls) tb.className=cls;
+}
+function refreshTools(){
+  const play=G&&G.state==='play';
+  $('#btn-hint').disabled=!(play&&G.hints>0&&G.elim.size===0);
+  $('#btn-time').disabled=!(play&&G.boosts>0&&(G.mode==='survival'||G.mode==='sprint'||G.mode==='waiting'));
+  $$('#choices .choice').forEach(b=>{ b.disabled=!play; b.classList.toggle('elim',G.elim.has(+b.dataset.i)); });
+}
+
+function drawNext(){
+  if(!G.deck.length){ G.deck=shuffle(CASES.slice()); if(G.cur&&G.deck[G.deck.length-1]===G.cur) G.deck.unshift(G.deck.pop()); }
+  return G.deck.pop();
+}
+function vitStatus(p){
+  const a=p.a, hr=a<2?[100,160]:a<12?[70,130]:[60,100], sy=sys(p.pa), lo=a<12?70:90;
+  return {
+    fc:(p.fc===0||p.fc<hr[0]*.75||p.fc>hr[1]*1.3)?'crit':(p.fc<hr[0]||p.fc>hr[1])?'warn':'',
+    pa:(sy<lo||sy>=180)?'crit':(sy>=150||sy<lo+10)?'warn':'',
+    t:(p.t<34||p.t>=39.5)?'crit':(p.t<35.5||p.t>=37.8)?'warn':'',
+    o:p.o<90?'crit':p.o<95?'warn':''
+  };
+}
+function loadPatient(){
+  if(G.mode==='waiting'){ wNext(); return; }
+  const p=G.cur=drawNext(); G.n++; G.state='play'; G.elim=new Set(); G.t0=performance.now();
+  G.timer=G.timePer; lastTickSec=99;
+  paintPatient(p,G.n);
+  Snd.next(); updateHUD();
+}
+function paintPatient(p,no){
+  $('#avatar').innerHTML=avatarSVG(p);
+  $('#ticket').textContent='FICHA Nº '+String(no).padStart(3,'0');
+  $('#pname').textContent=p.n;
+  $('#pmeta').textContent=`${p.am||(p.a+' '+(p.a===1?'ano':'anos'))} · ${p.s==='F'?'Feminino':'Masculino'}`;
+  $('#pq').textContent=p.q;
+  const st=(G.mode==='train'||S.highlight)?vitStatus(p):{};
+  [['fc',p.fc],['pa',p.pa],['t',String(p.t).replace('.',',')],['o',p.o]].forEach(([k,v])=>{
+    const el=$('#v-'+(k==='fc'?'fc':k)); el.querySelector('b').textContent=v; el.className='vit '+(st[k]||'');
+  });
+  ecg.hr=p.fc; ecg.spo2=p.o; ecg.t=0; ecg.phase=0;
+  const vs=vitStatus(p); ecg.color=(p.fc===0||vs.fc==='crit'||vs.o==='crit')?'#ff7a85':'#5dffa6';
+  ecgPrime();
+  const el=$('#patient'); el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter');
+  $('#fb').hidden=true; $('#timebox').className='timebox';
+  if(p.fc===0) flatTimer=0;
+}
+
+/* ---- decisão ---- */
+function choose(i){
+  if(!G||G.state!=='play'||G.elim.has(i)) return;
+  const p=G.cur, rt=(performance.now()-G.t0)/1000;
+  G.state='feedback'; G.answered++; G.stats[p.c].t++; G.rt+=rt;
+  if(G.mode==='waiting'){
+    const mc=Math.min(...G.queue.map(x=>x.p.c)); G.wFirst=p.c<=mc; const w=G.queue.find(x=>x.p.c===mc); G.wWorse=G.wFirst?null:w.p.n;
+    G.queue.splice(G.sel,1); wRender();
+  }
+  let kind, pts=0, calc='';
+  if(i===p.c){
+    kind='ok'; G.stats[p.c].c++; G.correct++;
+    const mult=1+Math.min(G.streak,8)*.25;
+    const base=100, bonus=(G.mode==='survival'||G.mode==='daily'||G.mode==='waiting')?Math.round(Math.max(0,G.timer)/G.timePer*100):0, ord=(G.mode==='waiting'&&G.wFirst)?50:0;
+    pts=Math.round((base+bonus+ord)*mult); G.score+=pts; G.streak++; G.best=Math.max(G.best,G.streak);
+    calc=`(${base}${bonus?` + ${bonus} de tempo`:''}${ord?` + ${ord} de ordem certa`:''}) × ${String(mult).replace('.',',')} de sequência = ${pts}`;
+    if(G.mode==='survival'||G.mode==='waiting'){
+      if(G.mode==='survival') G.timePer=Math.max(S.hard?6:8,G.timePer-1);
+      if(G.streak%5===0&&G.lives<G.maxLives){ G.lives++; setTimeout(()=>{toast('+1 vida pela sequência!');Snd.life()},500); }
+      if(G.correct%10===0){ G.hints++; G.boosts++; setTimeout(()=>{toast('Bônus: +1 dica e +1 tempo extra');Snd.power()},1300); }
+    }
+    G.log.push('ok'); if(G.mode==='sprint'){ G.clock+=3; calc+=' · +3 s no relógio'; }
+    Snd.correct(); flash('ok'); popScore('+'+pts);
+  } else if(i===p.c-1){
+    kind='near'; G.log.push('near'); pts=50; G.score+=pts; G.streak=0; calc='Sobretriagem leve: 50 pontos fixos, a sequência volta a zero.';
+    Snd.near(); popScore('+50'); flash('ok');
+  } else {
+    kind='bad'; G.streak=0; G.misses.push({p,chosen:i}); G.log.push('bad');
+    Snd.wrong(); flash('bad');
+    if(G.mode==='survival'||G.mode==='waiting'){ loseLife(); }
+    if(G.mode==='sprint'){ G.clock=Math.max(0,G.clock-(S.hard?7:5)); }
+  }
+  G.pending={kind,chosen:i,pts,calc};
+  setTimeout(()=>showFeedback(),kind==='ok'?380:300);
+  updateHUD(kind==='bad');
+}
+function timeOut(){
+  const p=G.cur; G.state='feedback'; G.answered++; G.stats[p.c].t++; G.streak=0; G.rt+=G.timePer;
+  G.misses.push({p,chosen:-1}); G.log.push('bad'); loseLife(); Snd.timeout(); flash('bad');
+  G.pending={kind:'time',chosen:-1,pts:0,calc:''};
+  updateHUD(true); setTimeout(showFeedback,300);
+}
+function loseLife(){ G.lives=Math.max(0,G.lives-1); }
+function flash(k){
+  const s=$('#screen-game'); s.classList.remove('flash-ok','flash-bad'); void s.offsetWidth; s.classList.add('flash-'+k);
+  if(k==='bad'){ const v=$('#vignette'); v.classList.add('on'); setTimeout(()=>v.classList.remove('on'),450); }
+}
+function popScore(t,bad){
+  const el=document.createElement('span'); el.className='pop'+(bad?' bad':''); el.textContent=t;
+  document.querySelector('.scorebox').appendChild(el); setTimeout(()=>el.remove(),1200);
+}
+let toastT;
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2200); }
+
+function chipHTML(i){ if(i<0) return '<span class="chip none">Sem resposta</span>'; const l=LEVELS[i]; return `<span class="chip" style="--lc:${l.color};--li:${l.ink}">${l.name}</span>`; }
+function showFeedback(){
+  const p=G.cur, r=G.pending, sheet=$('#fb-sheet'); sheet.className='sheet '+r.kind;
+  const titles={ok:'Classificação correta',near:'Quase, sobretriagem',bad:'Classificação incorreta',time:'Tempo esgotado'};
+  $('#fb-title').textContent=titles[r.kind];
+  $('#fb-pts').textContent=r.pts?'+'+r.pts:'';
+  $('#fb-you').innerHTML=chipHTML(r.chosen);
+  $('#fb-right').innerHTML=chipHTML(p.c);
+  $('#fb-you-t').textContent=r.chosen>=0?LEVELS[r.chosen].time:'';
+  $('#fb-right-t').textContent=LEVELS[p.c].time;
+  let txt=p.f; if(r.kind==='time') txt='O paciente não foi triado a tempo. '+txt;
+  $('#fb-text').textContent=txt;
+  const note=$('#fb-note'); note.hidden=true;
+  if(r.kind==='bad'||r.kind==='time'){
+    let n='';
+    if(r.chosen>p.c) n='Subtriagem: classificar abaixo da gravidade real é o erro mais perigoso, porque o paciente espera mais do que pode.';
+    else if(r.chosen>=0&&r.chosen<p.c-1) n='Sobretriagem: ocupa a fila de quem precisa mais urgência.';
+    if(G.mode==='sprint') n+=(n?' ':'')+`Você perdeu ${S.hard?7:5} segundos do relógio.`;
+    if(G.mode==='survival'||G.mode==='waiting') n+=(n?' ':'')+(G.lives>0?`Você perdeu uma vida. Restam ${G.lives}.`:'Você ficou sem vidas.');
+    if(n){ note.textContent=n; note.hidden=false; }
+  }
+  if(G.mode==='waiting'&&G.wWorse&&r.kind!=='time'){ note.textContent=(note.hidden?'':note.textContent+' ')+`Havia um paciente mais grave aguardando (${G.wWorse}). Triar na ordem de gravidade evita que ele piore.`; note.hidden=false; }
+  $('#fb-calc').textContent=r.calc;
+  const over=isOver();
+  $('#btn-next').textContent=over?'Ver resultado':'Próximo paciente';
+  $('#fb').hidden=false; $('#btn-next').focus({preventScroll:true});
+  if(over) setTimeout(()=>Snd.over(),400);
+  refreshTools();
+}
+function wSpawn(){
+  const p=drawNext(); G.n++; G.uid++;
+  const k=Math.max(.6,1-G.correct*.012);
+  const it={id:G.uid,p,wait:0,max:WAIT_MAX[p.c]*k*(S.hard?.8:1),elim:new Set(),no:G.n};
+  G.queue.push(it); return it;
+}
+function wSelect(i,silent){
+  const it=G.queue[i]; if(!it) return;
+  G.sel=i; G.cur=it.p; G.elim=it.elim; G.t0=performance.now(); G.timer=it.max-it.wait; G.timePer=it.max;
+  paintPatient(it.p,it.no); wRender(); refreshTools();
+  if(!silent) Snd.click();
+}
+function wNext(){
+  G.state='play';
+  if(!G.init){ G.init=true; for(let i=0;i<3;i++) wSpawn(); }
+  if(!G.queue.length) wSpawn();
+  wSelect(0,true); Snd.next(); updateHUD();
+}
+function wRender(){
+  const q=$('#queue'), sig=G.queue.map(x=>x.id).join(',')+'|'+G.sel;
+  if(q.dataset.sig!==sig){
+    q.dataset.sig=sig; let h='';
+    for(let i=0;i<W_CAP;i++){
+      const it=G.queue[i];
+      if(!it){ h+='<div class="qslot" aria-hidden="true">vaga</div>'; continue; }
+      if(!it.av) it.av=avatarSVG(it.p);
+      h+=`<button class="qcard${i===G.sel?' sel':''}" data-id="${it.id}" aria-label="${esc(it.p.n)}, aguardando"><span class="qav">${it.av}</span><span class="qn">${esc(it.p.n.split(' ')[0])}</span><span class="qa">${esc(it.p.am||(it.p.a+' anos'))}</span><span class="qt num">0:00</span><i class="qb"><b></b></i></button>`;
+    }
+    q.innerHTML=h;
+  }
+  showRoom(); wUpdate();
+}
+function wUpdate(){
+  $$('#queue .qcard').forEach(el=>{
+    const it=G.queue.find(x=>String(x.id)===el.dataset.id); if(!it) return;
+    const t=Math.floor(it.wait), txt=Math.floor(t/60)+':'+String(t%60).padStart(2,'0'), qt=el.querySelector('.qt');
+    if(qt.textContent!==txt) qt.textContent=txt;
+    const frac=1-it.wait/it.max; el.classList.toggle('warn',frac<.4); el.classList.toggle('crit',frac<.2);
+    el.querySelector('.qb b').style.width=Math.max(0,frac*100)+'%';
+  });
+}
+function wTick(dt){
+  const selItem=G.queue[G.sel]; let changed=false;
+  const frozen=G.freeze>0; if(frozen) G.freeze=Math.max(0,G.freeze-dt);
+  $('#queue').classList.toggle('frozen',frozen);
+  for(let i=G.queue.length-1;i>=0;i--){
+    const it=G.queue[i]; if(!frozen) it.wait+=dt;
+    if(it.wait>=it.max){
+      G.queue.splice(i,1); changed=true;
+      G.answered++; G.stats[it.p.c].t++; G.streak=0; G.misses.push({p:it.p,chosen:-1}); G.log.push('bad');
+      G.lives=Math.max(0,G.lives-1); Snd.wrong(); flash('bad'); toast(`${it.p.n} piorou esperando.`); updateHUD(true);
+    }
+  }
+  if(G.lives<=0){ Snd.over(); showOver(); return; }
+  if(!frozen) G.spawnIn-=dt;
+  if(G.spawnIn<=0){
+    G.spawnIn=Math.max(S.hard?4:6,(S.hard?12:16)-G.correct*.35);
+    if(G.queue.length>=W_CAP){
+      G.lives=Math.max(0,G.lives-1); Snd.wrong(); flash('bad'); toast('Sala lotada: um paciente foi embora sem triagem.'); updateHUD(true);
+      if(G.lives<=0){ Snd.over(); showOver(); return; }
+    } else { wSpawn(); changed=true; Snd.tone(740,.14,{vol:.08}); }
+  }
+  if(changed){
+    const idx=G.queue.indexOf(selItem);
+    if(idx>=0){ G.sel=idx; wRender(); }
+    else { if(!G.queue.length) wSpawn(); wSelect(0,true); }
+  }
+  const cur=G.queue[G.sel]; if(cur){ G.timer=cur.max-cur.wait; G.timePer=cur.max; }
+  wUpdate();
+}
+function isOver(){ return ((G.mode==='survival'||G.mode==='waiting')&&G.lives<=0)||(G.mode==='sprint'&&G.clock<=0)||(G.mode==='daily'&&G.answered>=DAILY_N); }
+function nextStep(){
+  if(!G||G.state!=='feedback') return;
+  if(isOver()){ showOver(); return; }
+  Snd.click(); loadPatient();
+}
+
+/* ---- poderes ---- */
+function useHint(){
+  if(!G||G.state!=='play'||G.hints<=0||G.elim.size) return;
+  const wrong=shuffle([0,1,2,3,4].filter(i=>i!==G.cur.c)).slice(0,2);
+  wrong.forEach(i=>G.elim.add(i));
+  if(G.mode!=='train') G.hints--;
+  Snd.power(); updateHUD(); toast('Duas opções erradas eliminadas');
+}
+function useTime(){
+  if(!G||G.state!=='play'||!['survival','sprint','waiting'].includes(G.mode)||G.boosts<=0) return;
+  G.boosts--;
+  if(G.mode==='waiting'){ G.freeze=8; toast('Sala estabilizada por 8 segundos'); }
+  else { if(G.mode==='sprint') G.clock+=10; else G.timer+=10; toast('+10 segundos'); }
+  Snd.power(); updateHUD();
+}
+
+/* ---- pausa / saída ---- */
+function togglePause(){
+  if(!G||screen!=='game') return;
+  if(G.state==='play'||G.state==='feedback'){ G.prev=G.state; G.state='paused'; $('#pause').hidden=false; $('#btn-resume').focus(); Snd.pause(); }
+  else if(G.state==='paused'){ G.state=G.prev; $('#pause').hidden=true; Snd.pause(); refreshTools(); if(G.state==='feedback') $('#btn-next').focus(); }
+}
+function toggleRef(){
+  if(!G||G.mode!=='train') return;
+  const o=$('#ref'); o.hidden=!o.hidden; Snd.click();
+}
+function quitGame(){
+  if(!G) return;
+  $('#pause').hidden=true; $('#fb').hidden=true; $('#ref').hidden=true;
+  if(G.answered===0){ G=null; show('menu'); return; }
+  showOver(true);
+}
+
+/* ---- fim de jogo ---- */
+function getRank(){ const r=store.get('triagem-ranking-v1',[]); return Array.isArray(r)?r:[]; }
+function showOver(quit){
+  $('#fb').hidden=true; $('#pause').hidden=true;
+  G.state='over';
+  const acc=G.answered?Math.round(G.correct/G.answered*100):0;
+  const avgRt=G.answered?(G.rt/G.answered):0;
+  const train=G.mode==='train';
+  const daily=G.mode==='daily';
+  $('#over-h').textContent=train?'Relatório do treino':daily?'Desafio do dia':(G.mode==='sprint'&&G.clock<=0)?'Tempo esgotado':'Fim de jogo';
+  $('#over-score').textContent=G.score;
+  const titles=acc>=90?'Referência do plantão':acc>=70?'Triagista experiente':acc>=50?'Residente atento':'Em treinamento';
+  $('#over-title').textContent=G.answered>=5?titles:'';
+  let rec=false;
+  if(daily){ const d=store.get('triagem-daily',{}); const prev=(d&&d.date===todayKey())?d.score:0; rec=G.score>prev&&G.score>0; if(rec) store.set('triagem-daily',{date:todayKey(),score:G.score}); }
+  else if(!train){ const k=G.mode==='sprint'?'triagem-best-sprint':G.mode==='waiting'?'triagem-best-waiting':'triagem-best'; rec=G.score>store.get(k,0)&&G.score>0; if(rec) store.set(k,G.score); }
+  $('#over-rec').textContent=daily?'Melhor do dia':'Novo recorde';
+  $('#over-rec').hidden=!rec; if(rec) Snd.fanfare();
+  $('#share-card').hidden=!daily;
+  if(daily){ const d=new Date(), em={ok:'🟩',near:'🟨',bad:'🟥'};
+    $('#share-text').textContent=`Triagem Médica · Desafio ${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}\n${G.log.map(x=>em[x]).join('')}  ${G.correct}/${G.answered} · ${G.score} pts`; }
+  $('#over-stats').innerHTML=[['Atendidos',G.answered],['Acertos',G.correct],['Precisão',acc+'%'],['Maior sequência',G.best],['Tempo médio',avgRt.toFixed(1).replace('.',',')+' s']]
+    .map(([k,v])=>`<div class="stat"><small>${k}</small><b class="num">${v}</b></div>`).join('');
+  $('#over-bars').innerHTML=LEVELS.map((l,i)=>{const s=G.stats[i],pc=s.t?Math.round(s.c/s.t*100):0;
+    return `<div class="bar" style="--lc:${l.color}"><span>${l.name}</span><div class="track"><i style="width:${pc}%"></i></div><em class="num">${s.c}/${s.t}</em></div>`}).join('');
+  $('#save-card').hidden=train||daily||G.score<=0;
+  $('#rank-name').value=store.get('triagem-nome','');
+  $('#btn-save').disabled=false; $('#btn-save').textContent='Salvar';
+  const miss=$('#miss-card'); miss.hidden=!G.misses.length;
+  $('#over-miss').innerHTML=G.misses.map(m=>{const l=LEVELS[m.p.c];
+    return `<article style="--lc:${l.color}"><h4>${esc(m.p.n)}, ${esc(m.p.am||(m.p.a+' anos'))}</h4><p>${esc(m.p.q)}</p><p>Você: ${m.chosen<0?'sem resposta':`<span class="chip" style="--lc:${LEVELS[m.chosen].color};--li:${LEVELS[m.chosen].ink}">${LEVELS[m.chosen].name}</span>`} &nbsp; Correto: <span class="chip" style="--lc:${l.color};--li:${l.ink}">${l.name}</span></p><p>${esc(m.p.f)}</p></article>`}).join('');
+  cloudSave();
+  show('over');
+}
+function saveRank(){
+  const name=($('#rank-name').value.trim()||'Anônimo').slice(0,18); store.set('triagem-nome',name===('Anônimo')?'':name);
+  const r=getRank(); r.push({name,mode:G.mode,score:G.score,correct:G.correct,answered:G.answered,date:new Date().toISOString().slice(0,10)});
+  r.sort((a,b)=>b.score-a.score); store.set('triagem-ranking-v1',r.slice(0,10));
+  $('#btn-save').disabled=true; $('#btn-save').textContent='Salvo'; Snd.life(); toast('Resultado salvo no ranking');
+}
+function renderRank(){
+  const r=getRank(), ol=$('#rank-list');
+  ol.innerHTML=r.length?r.map((e,i)=>`<li><span class="pos num">${i+1}</span><span class="nm">${esc(e.name)}<small>${esc((MODES[e.mode]||MODES.survival).label)} · ${e.correct}/${e.answered} acertos · ${esc(e.date)}</small></span><span class="pt num">${e.score}</span></li>`).join('')
+    :'<li class="empty">Nenhuma partida registrada ainda. Jogue uma partida e salve o resultado.</li>';
+}
+
+/* ============ LOOP ============ */
+function frame(ts){
+  const dt=Math.min(.1,(ts-lastFrame)/1000||0); lastFrame=ts;
+  const playing=G&&screen==='game'&&G.state==='play';
+  if(screen==='game'&&G){
+    if(playing&&(G.mode==='survival'||G.mode==='daily')){
+      G.timer-=dt;
+      const t=Math.max(0,G.timer), sec=Math.ceil(t);
+      $('#timetxt').textContent='Tempo: '+sec+'s';
+      $('#timefill').style.width=Math.min(100,t/G.timePer*100)+'%';
+      const tb=$('#timebox'); const cls=t<=5?'timebox low':t<=G.timePer*.5?'timebox mid':'timebox'; if(tb.className!==cls) tb.className=cls;
+      if(sec<=5&&sec!==lastTickSec&&sec>0){ Snd.tick(); } lastTickSec=sec;
+      if(G.timer<=0) timeOut();
+    } else if(playing&&G.mode==='waiting'){
+      wTick(dt);
+    } else if(playing&&G.mode==='sprint'){
+      G.clock-=dt; showClock();
+      const sec=Math.ceil(Math.max(0,G.clock));
+      if(sec<=10&&sec!==lastTickSec&&sec>0) Snd.tick(); lastTickSec=sec;
+      if(G.clock<=0){ G.clock=0; showClock(); Snd.over(); showOver(); }
+    }
+    if(G.cur&&G.cur.fc===0&&playing){ flatTimer+=dt; if(flatTimer>1.8){ flatTimer=0; Snd.flat(); } }
+    ecgDraw(dt,playing);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ============ EVENTOS ============ */
+document.addEventListener('click',e=>{
+  const a=e.target.closest('[data-act]');
+  if(a){
+    Snd.init(); Snd.click();
+    const act=a.dataset.act;
+    if(act==='play') newGame('survival');
+    else if(act==='sprint') newGame('sprint');
+    else if(act==='daily') newGame('daily');
+    else if(act==='waiting') newGame('waiting');
+    else if(act==='train') newGame('train');
+    else if(act==='help') show('help');
+    else if(act==='rank') show('rank');
+    else if(act==='acct') show('acct');
+    else if(act==='settings') openSettings();
+    else if(act==='menu') { G=null; show('menu'); }
+    return;
+  }
+  const qc=e.target.closest('.qcard');
+  if(qc){ if(G&&G.mode==='waiting'&&G.state==='play'){ Snd.init(); const i=G.queue.findIndex(x=>String(x.id)===qc.dataset.id); if(i>=0&&i!==G.sel) wSelect(i); } return; }
+  const tb=e.target.closest('#rank-tabs button'); if(tb){ rankTab=tb.dataset.tab; renderRankScreen(); return; }
+  const at=e.target.closest('#auth-tabs button'); if(at){ Acct.authMode=at.dataset.m; renderAcct(); return; }
+  if(e.target.id==='au-reset'){ authReset(); return; }
+  const c=e.target.closest('.choice'); if(c){ Snd.init(); choose(+c.dataset.i); }
+});
+$('#btn-next').addEventListener('click',nextStep);
+$('#btn-hint').addEventListener('click',useHint);
+$('#btn-time').addEventListener('click',useTime);
+$('#btn-pause').addEventListener('click',togglePause);
+$('#btn-resume').addEventListener('click',togglePause);
+$('#btn-quit').addEventListener('click',()=>{ if(G&&G.state!=='paused'&&G.state!=='over'){ G.prev=G.state; G.state='paused'; $('#pause').hidden=false; $('#btn-resume').focus(); } });
+$('#btn-pause-quit').addEventListener('click',quitGame);
+$('#btn-ref').addEventListener('click',toggleRef);
+$('#btn-ref-close').addEventListener('click',toggleRef);
+$('#btn-again').addEventListener('click',()=>{ const m=G?G.mode:'survival'; Snd.click(); newGame(m); });
+$('#btn-save').addEventListener('click',saveRank);
+$('#btn-copy').addEventListener('click',async()=>{
+  const el=$('#share-text');
+  try{ await navigator.clipboard.writeText(el.textContent); toast('Resultado copiado'); }
+  catch(e){ const r=document.createRange(); r.selectNodeContents(el); const sel=getSelection(); sel.removeAllRanges(); sel.addRange(r); toast('Texto selecionado. Use Ctrl+C para copiar.'); }
+});
+$('#rank-name').addEventListener('keydown',e=>{ if(e.key==='Enter') saveRank(); });
+function updSnd(){
+  $('#snd').innerHTML=Snd.on
+    ?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12"/></svg>'
+    :'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor"/><path d="M17 9l5 6M22 9l-5 6"/></svg>';
+  $('#snd').setAttribute('aria-pressed',String(Snd.on));
+}
+function toggleSound(){ Snd.init(); Snd.on=!Snd.on; store.set('triagem-som',Snd.on); updSnd(); if(Snd.on) Snd.click(); }
+$('#snd').addEventListener('click',toggleSound);
+$('#gear').addEventListener('click',()=>{ Snd.init(); openSettings(); });
+$('#btn-pause-set').addEventListener('click',()=>{ Snd.init(); openSettings(); });
+$('#btn-acct-toggle').addEventListener('click',acctToggle);
+document.addEventListener('submit',e=>{
+  if(e.target.id==='auth-form'){ e.preventDefault(); authSubmit(); }
+  else if(e.target.id==='recov-form'){ e.preventDefault(); recovSubmit(); }
+});
+$('#rank-mode').addEventListener('change',renderGlobal);
+$('#set-ok').addEventListener('click',closeSettings);
+$('#settings').addEventListener('click',e=>{ if(e.target.id==='settings') closeSettings(); });
+$('#s-vol').addEventListener('input',e=>{ S.volume=+e.target.value; $('#o-vol').textContent=S.volume+'%'; applySettings(); });
+$('#s-vol').addEventListener('change',()=>{ saveS(); Snd.init(); Snd.click(); });
+$('#s-mon').addEventListener('input',e=>{ S.monVol=+e.target.value; $('#o-mon').textContent=S.monVol+'%'; });
+$('#s-mon').addEventListener('change',()=>{ saveS(); Snd.init(); Snd.beep(98); });
+$('#s-snd').addEventListener('change',e=>{ Snd.init(); Snd.on=e.target.checked; store.set('triagem-som',Snd.on); updSnd(); if(Snd.on) Snd.click(); });
+$('#s-hl').addEventListener('change',e=>{ S.highlight=e.target.checked; saveS(); if(G) $('#hl-note').hidden=!(G.mode==='train'||S.highlight); });
+$('#s-mot').addEventListener('change',e=>{ S.motion=e.target.checked; saveS(); applySettings(); });
+$('#s-size').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.textSize=+b.dataset.v; saveS(); applySettings(); syncSettingsUI(); });
+$('#s-diff').addEventListener('click',e=>{ const b=e.target.closest('button'); if(!b) return; S.hard=b.dataset.v==='hard'; saveS(); syncSettingsUI(); });
+let resetT=0;
+$('#s-reset').addEventListener('click',e=>{
+  const b=e.target;
+  if(!resetT){ b.textContent='Confirmar: apagar tudo'; resetT=setTimeout(()=>{ resetT=0; b.textContent='Apagar dados'; },4000); return; }
+  clearTimeout(resetT); resetT=0; b.textContent='Apagar dados';
+  ['triagem-best','triagem-best-sprint','triagem-best-waiting','triagem-daily','triagem-ranking-v1','triagem-nome','triagem-config','triagem-som','triagem-guest'].forEach(k=>{ delete mem[k]; try{localStorage.removeItem(k)}catch(_){} });
+  Object.assign(S,{volume:80,monVol:50,highlight:false,motion:true,textSize:0,hard:false}); Snd.on=true; updSnd(); applySettings(); syncSettingsUI(); updateMenu(); toast('Dados deste aparelho apagados');
+});
+
+document.addEventListener('keydown',e=>{
+  if(!$('#settings').hidden){ if(e.key==='Escape') closeSettings(); return; }
+  if(e.ctrlKey||e.metaKey||e.altKey) return;
+  if(e.target.matches&&e.target.matches('input,textarea')) return;
+  const k=e.key;
+  if(k==='m'||k==='M'){ toggleSound(); return; }
+  if(screen==='game'&&G){
+    Snd.init();
+    if(!$('#ref').hidden){ if(k==='Escape'||k==='r'||k==='R'){ toggleRef(); } return; }
+    if(G.state==='play'&&/^[1-5]$/.test(k)){ choose(+k-1); return; }
+    if(G.mode==='waiting'&&G.state==='play'&&(k==='ArrowRight'||k==='ArrowLeft')&&G.queue.length){ e.preventDefault(); wSelect((G.sel+(k==='ArrowRight'?1:-1)+G.queue.length)%G.queue.length); return; }
+    if(k==='h'||k==='H'){ useHint(); return; }
+    if(k==='t'||k==='T'){ useTime(); return; }
+    if((k==='r'||k==='R')&&G.mode==='train'){ toggleRef(); return; }
+    if(k==='p'||k==='P'||k==='Escape'){ togglePause(); return; }
+    if((k==='Enter'||k===' ')&&G.state==='feedback'&&e.target.tagName!=='BUTTON'){ e.preventDefault(); nextStep(); }
+  } else if((k==='Escape')&&(screen==='help'||screen==='rank')){ show('menu'); }
+});
+document.addEventListener('visibilitychange',()=>{ if(document.hidden&&G&&G.state==='play'&&G.mode!=='train') togglePause(); });
+window.addEventListener('resize',()=>{ if(screen==='game') ecgResize(); });
+
+/* ============ INÍCIO ============ */
+renderRefs(); updSnd(); applySettings(); show('menu'); requestAnimationFrame(frame); acctInit();
+window.__triagem={choose:i=>choose(i),get G(){return G},newGame,S,Acct};
+})();
+</script>
+
+</body>
+</html>
